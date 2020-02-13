@@ -11,7 +11,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"github.com/irai/ping"
+	"github.com/irai/icmp"
 )
 
 var (
@@ -35,7 +35,7 @@ func main() {
 		log.Fatal("Invalid dst IP ", dstIP)
 	}
 
-	h, _ := ping.New(*nic)
+	h, _ := icmp.New(*nic)
 	h.Log = true
 	defer h.Close()
 

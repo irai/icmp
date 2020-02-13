@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
-	"syscall"
 	"time"
 
 	"github.com/mdlayher/raw"
@@ -23,6 +22,16 @@ type Handler struct {
 	Log bool
 }
 
+const (
+	// Ethernet packet types - ETHER_TYPE
+	ETH_P_IP    = 0x800  // IP
+	ETH_P_8021Q = 0x8100 // VLAN
+
+	// ICMP Packet types
+	ICMPTypeEchoReply   = 0
+	ICMPTypeEchoRequest = 8
+)
+
 // RawEthPacket provide access to ethernet fields without copying the structure
 // see: https://medium.com/@mdlayher/network-protocol-breakdown-ethernet-and-go-de985d726cc1
 type RawEthPacket []byte
@@ -38,14 +47,14 @@ func (p RawEthPacket) IsValid() bool {
 func (p RawEthPacket) EtherType() uint16 { return binary.BigEndian.Uint16(p[12:14]) }
 func (p RawEthPacket) Payload() []byte {
 
-	if p.EtherType() == syscall.ETH_P_IP {
+	if p.EtherType() == ETH_P_IP {
 		return p[14:]
 	}
 	// The IEEE 802.1Q tag, if present, then two EtherType contains the Tag Protocol Identifier (TPID) value of 0x8100
 	// and true EtherType/Length is located after the Q-tag.
 	// The TPID is followed by two octets containing the Tag Control Information (TCI) (the IEEE 802.1p priority (quality of service) and VLAN id).
 	// also handle 802.1ad - 0x88a8
-	if p.EtherType() == syscall.ETH_P_8021Q { // add 2 bytes to frame
+	if p.EtherType() == ETH_P_8021Q { // add 2 bytes to frame
 		return p[16:]
 	}
 	if p.EtherType() == 0x88a8 { // add 6 bytes to frame
@@ -85,9 +94,6 @@ func (p RawIPPacket) String() string {
 }
 
 type RawICMPPacket []byte
-
-const ICMPTypeEchoReply = 0
-const ICMPTypeEchoRequest = 8
 
 func (p RawICMPPacket) Type() uint8          { return uint8(p[0]) }
 func (p RawICMPPacket) Code() int            { return int(p[1]) }
@@ -177,7 +183,7 @@ func New(nic string) (h *Handler, err error) {
 		},
 	})
 
-	h.conn, err = raw.ListenPacket(ifi, syscall.ETH_P_IP, &raw.Config{Filter: bpf})
+	h.conn, err = raw.ListenPacket(ifi, ETH_P_IP, &raw.Config{Filter: bpf})
 	if err != nil {
 		log.Error("icmp raw.ListenAndServe failed ", err)
 		return nil, err
@@ -213,7 +219,7 @@ func (h *Handler) readLoop(bufSize int) {
 		}
 
 		ether := RawEthPacket(buf[:n])
-		if ether.EtherType() != syscall.ETH_P_IP || !ether.IsValid() {
+		if ether.EtherType() != ETH_P_IP || !ether.IsValid() {
 			log.Error("icmp invalid ethernet packet ", ether.EtherType())
 			continue
 		}
