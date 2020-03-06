@@ -14,12 +14,12 @@ import (
 	"golang.org/x/net/icmp"
 )
 
+// LogAll packets turn on logging if desirable
+var LogAll bool
+
 // Handler maintains the underlying socket connection
 type Handler struct {
 	conn net.PacketConn
-
-	// Log packets turn on logging if desirable
-	Log bool
 }
 
 const (
@@ -138,8 +138,8 @@ func (h *Handler) sendRawICMP(src net.IP, dst net.IP, p RawICMPPacket) error {
 		Dst:      dst,
 	}
 
-	if h.Log {
-		log.Infof("send %v from %v to %v", p, src, dst)
+	if LogAll {
+		log.WithFields(log.Fields{"group": "icmp", "src": src, "dst": dst}).Debugf("send icmp msg type=%v", p.Type())
 	}
 	if err := r.WriteTo(iph, p, nil); err != nil {
 		log.Error("failed to write ", err)
@@ -240,8 +240,8 @@ func (h *Handler) readLoop(bufSize int) {
 
 		switch icmpFrame.Type() {
 		case ICMPTypeEchoReply:
-			if h.Log {
-				log.Infof("rcvd %+v", icmpFrame)
+			if LogAll {
+				log.WithFields(log.Fields{"group": "icmp"}).Debugf("rcvd icmp %+v ", icmpFrame)
 			}
 			icmpTable.cond.L.Lock()
 			if len(icmpTable.table) <= 0 {
@@ -268,9 +268,7 @@ func (h *Handler) readLoop(bufSize int) {
 			icmpTable.cond.Broadcast()
 
 		default:
-			if h.Log {
-				log.Infof("unimplemented rcvd %+v", icmpFrame)
-			}
+			log.WithFields(log.Fields{"group": "icmp"}).Infof("rcvd unimplemented icmp %+v ", icmpFrame)
 		}
 	}
 }

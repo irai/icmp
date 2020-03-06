@@ -23,6 +23,9 @@ var (
 func main() {
 	flag.Parse()
 
+	icmp.LogAll = true
+	log.SetLevel(log.DebugLevel)
+
 	log.Infof("Using nic %v src=%v dst=%v", *nic, *srcIP, *dstIP)
 
 	src := net.ParseIP(*srcIP).To4()
@@ -36,13 +39,13 @@ func main() {
 	}
 
 	h, _ := icmp.New(*nic)
-	h.Log = true
+	icmp.LogAll = true
 	defer h.Close()
 
 	cmd(h, src, dst)
 }
 
-func cmd(h *ping.Handler, srcIP net.IP, dstIP net.IP) {
+func cmd(h *icmp.Handler, srcIP net.IP, dstIP net.IP) {
 	reader := bufio.NewReader(os.Stdin)
 	for {
 		fmt.Println("Command: (q)uit | (p)ing src dst | (g) loG <level>")
