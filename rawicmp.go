@@ -106,9 +106,9 @@ func (p RawICMPPacket) Payload() []byte      { return p[8:len(p)] }
 func (p RawICMPPacket) String() string {
 	switch p.Type() {
 	case ICMPTypeEchoReply, ICMPTypeEchoRequest:
-		return fmt.Sprintf("icmp echo code: %v id: %v data: %v", p.EchoID(), p.Code(), string(p.EchoData()))
+		return fmt.Sprintf("echo code: %v id: %v data: %v", p.EchoID(), p.Code(), string(p.EchoData()))
 	}
-	return fmt.Sprintf("icmp type %v code: %v data: %X", p.Type(), p.Code(), p.Payload())
+	return fmt.Sprintf("type %v code: %v", p.Type(), p.Code())
 }
 
 func (h *Handler) sendRawICMP(src net.IP, dst net.IP, p RawICMPPacket) error {
@@ -268,7 +268,10 @@ func (h *Handler) readLoop(bufSize int) {
 			icmpTable.cond.Broadcast()
 
 		default:
-			log.WithFields(log.Fields{"group": "icmp"}).Infof("rcvd unimplemented icmp %+v ", icmpFrame)
+			log.WithFields(log.Fields{"group": "icmp", "type": icmpFrame.Type(), "code": icmpFrame.Code()}).Warnf("rcvd unimplemented icmp packet")
+			if LogAll {
+				log.WithFields(log.Fields{"group": "icmp", "type": icmpFrame.Type(), "code": icmpFrame.Code()}).Debugf("rcvd unimplemented icmp packet % X", icmpFrame.Payload())
+			}
 		}
 	}
 }
