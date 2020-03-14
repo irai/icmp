@@ -19,7 +19,8 @@ var LogAll bool
 
 // Handler maintains the underlying socket connection
 type Handler struct {
-	conn net.PacketConn
+	conn    net.PacketConn
+	closing bool
 }
 
 const (
@@ -197,7 +198,7 @@ func New(nic string) (h *Handler, err error) {
 }
 
 // Close the underlaying socket
-func (h *Handler) Close() { h.conn.Close() }
+func (h *Handler) Close() { h.closing = true; h.conn.Close() }
 
 func (h *Handler) readLoop(bufSize int) {
 	defer h.conn.Close()
@@ -205,7 +206,9 @@ func (h *Handler) readLoop(bufSize int) {
 	buf := make([]byte, bufSize)
 	for {
 		if err := h.conn.SetReadDeadline(time.Now().Add(time.Second * 2)); err != nil {
-			log.Error("icmp failed to set timeout ", err)
+			if !h.closing {
+				log.Error("icmp failed to set timeout ", err)
+			}
 			return
 		}
 
