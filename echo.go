@@ -53,16 +53,10 @@ func (h *Handler) SendICMPEcho(src net.IP, dst net.IP, id uint16, seq uint16) er
 
 	p, err := icmpMessage.Marshal(nil)
 	if err != nil {
-		log.Error("cannot marshal ", err)
 		return err
 	}
 
-	if err = h.sendRawICMP(src, dst, p); err != nil {
-		log.Error("cannot marshal ", err)
-		return err
-	}
-
-	return nil
+	return h.sendRawICMP(src, dst, p)
 }
 
 // Ping send a ping request and wait for a reply
@@ -76,7 +70,7 @@ func (h *Handler) Ping(src net.IP, dst net.IP, timeout time.Duration) (err error
 	icmpTable.cond.L.Unlock()
 
 	if err = h.SendICMPEcho(src, dst, id, 0); err != nil {
-		log.Error("error sending ", err)
+		log.Error("error sending ping packet", err)
 		return err
 	}
 
@@ -88,7 +82,7 @@ func (h *Handler) Ping(src net.IP, dst net.IP, timeout time.Duration) (err error
 	icmpTable.cond.L.Unlock()
 
 	if msg.msgRecv == nil {
-		return fmt.Errorf("timeout id=%v", id)
+		return fmt.Errorf("ping timeout ip= %v id=%v", dst, id)
 	}
 
 	return nil

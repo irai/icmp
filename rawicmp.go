@@ -119,14 +119,14 @@ func (h *Handler) sendRawICMP(src net.IP, dst net.IP, p RawICMPPacket) error {
 	// TODO: reuse h.conn and write directly to socket
 	c, err := net.ListenPacket("ip4:1", "0.0.0.0") // ICMP for IPv4
 	if err != nil {
-		log.Error("error in listen packet: ", err)
+		log.Error("icmp error in listen packet: ", err)
 		return err
 	}
 	defer c.Close()
 
 	r, err := ipv4.NewRawConn(c)
 	if err != nil {
-		log.Error("error in newrawconn: ", err)
+		log.Error("icmp error in newrawconn: ", err)
 		return err
 	}
 
@@ -142,10 +142,10 @@ func (h *Handler) sendRawICMP(src net.IP, dst net.IP, p RawICMPPacket) error {
 	}
 
 	if LogAll {
-		log.WithFields(log.Fields{"group": "icmp", "src": src, "dst": dst}).Debugf("send icmp msg type=%v", p.Type())
+		log.WithFields(log.Fields{"group": "icmp", "src": src, "dst": dst}).Debugf("icmp send msg type=%v", p.Type())
 	}
 	if err := r.WriteTo(iph, p, nil); err != nil {
-		log.Error("failed to write ", err)
+		log.Error("icmp failed to write ", err)
 		return err
 	}
 
@@ -158,7 +158,7 @@ func New(nic string) (h *Handler, err error) {
 	h = &Handler{}
 	ifi, err := net.InterfaceByName(nic)
 	if err != nil {
-		log.WithFields(log.Fields{"nic": nic}).Errorf("NIC cannot open nic %s error %s ", nic, err)
+		log.WithFields(log.Fields{"nic": nic}).Errorf("icmp fail to open nic %s error %s ", nic, err)
 		return nil, err
 	}
 
