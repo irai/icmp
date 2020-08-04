@@ -48,7 +48,7 @@ func main() {
 func cmd(h *icmp.Handler, srcIP net.IP, dstIP net.IP) {
 	reader := bufio.NewReader(os.Stdin)
 	for {
-		fmt.Println("Command: (q)uit | (p)ing src dst | (g) loG <level>")
+		fmt.Println("Command: (q)uit | (p)ing | (g) loG <level>")
 		fmt.Print("Enter command: ")
 		text, _ := reader.ReadString('\n')
 		text = strings.ToLower(text[:len(text)-1])
