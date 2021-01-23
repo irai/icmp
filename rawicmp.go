@@ -278,7 +278,7 @@ func (h *Handler) readLoop(bufSize int) {
 			}
 
 		default:
-			log.WithFields(log.Fields{"group": "icmp", "type": icmpFrame.Type(), "code": icmpFrame.Code()}).Warnf("rcvd unimplemented icmp packet")
+			log.WithFields(log.Fields{"group": "icmp", "type": icmpFrame.Type(), "code": icmpFrame.Code(), "fromIP": ipFrame.Src(), "toIP": ipFrame.Dst()}).Warnf("rcvd unimplemented icmp packet")
 			if LogAll {
 				log.WithFields(log.Fields{"group": "icmp", "type": icmpFrame.Type(), "code": icmpFrame.Code()}).Debugf("rcvd unimplemented icmp packet % X", icmpFrame.Payload())
 			}
