@@ -1,6 +1,7 @@
 package icmp
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"net"
@@ -19,8 +20,8 @@ var LogAll bool
 
 // Handler maintains the underlying socket connection
 type Handler struct {
-	conn    net.PacketConn
-	closing bool
+	ifi  *net.Interface
+	conn net.PacketConn
 }
 
 const (
@@ -102,9 +103,10 @@ func (p RawICMPPacket) Checksum() int        { return int(binary.BigEndian.Uint1
 func (p RawICMPPacket) RestOfHeader() []byte { return p[4:8] }
 func (p RawICMPPacket) EchoID() uint16       { return binary.BigEndian.Uint16(p[4:6]) }
 func (p RawICMPPacket) EchoSeq() uint16      { return binary.BigEndian.Uint16(p[6:8]) }
-func (p RawICMPPacket) EchoData() string     { return string(p[8:len(p)]) }
-func (p RawICMPPacket) Payload() []byte      { return p[8:len(p)] }
+func (p RawICMPPacket) EchoData() string     { return string(p[8:]) }
+func (p RawICMPPacket) Payload() []byte      { return p[8:] }
 func (p RawICMPPacket) String() string {
+
 	switch p.Type() {
 	case ICMPTypeEchoReply:
 		return fmt.Sprintf("echo reply code: %v id: %v data: %v", p.EchoID(), p.Code(), string(p.EchoData()))
@@ -152,16 +154,26 @@ func (h *Handler) sendRawICMP(src net.IP, dst net.IP, p RawICMPPacket) error {
 	return nil
 }
 
-// New start the ICMP listening service for the nic and return a handle
-// to access ICMP functionality.
+// New returns an ICMPv4 handler
 func New(nic string) (h *Handler, err error) {
 	h = &Handler{}
-	ifi, err := net.InterfaceByName(nic)
+	h.ifi, err = net.InterfaceByName(nic)
 	if err != nil {
-		log.WithFields(log.Fields{"nic": nic}).Errorf("icmp fail to open nic %s error %s ", nic, err)
-		return nil, err
+		return nil, fmt.Errorf("interface not found nic=%s err=%w", nic, err)
 	}
 
+	return h, nil
+}
+
+// Close the underlaying socket
+func (h *Handler) Close() error {
+	if h.conn != nil {
+		return h.conn.Close()
+	}
+	return nil
+}
+
+func (h *Handler) ListenAndServe(ctxt context.Context) (err error) {
 	bpf, err := bpf.Assemble([]bpf.Instruction{
 		// Load EtherType value from Ethernet header
 		bpf.LoadAbsolute{
@@ -186,40 +198,31 @@ func New(nic string) (h *Handler, err error) {
 		},
 	})
 
-	h.conn, err = raw.ListenPacket(ifi, ETH_P_IP, &raw.Config{Filter: bpf})
+	h.conn, err = raw.ListenPacket(h.ifi, ETH_P_IP, &raw.Config{Filter: bpf})
 	if err != nil {
-		log.Error("icmp raw.ListenAndServe failed ", err)
-		return nil, err
+		h.conn = nil // on windows, not impleted returns a partially completed conn
+		return fmt.Errorf("raw.ListenPacket error: %w", err)
 	}
-
-	go h.readLoop(ifi.MTU)
-
-	return h, nil
-}
-
-// Close the underlaying socket
-func (h *Handler) Close() { h.closing = true; h.conn.Close() }
-
-func (h *Handler) readLoop(bufSize int) {
 	defer h.conn.Close()
 
-	buf := make([]byte, bufSize)
+	buf := make([]byte, h.ifi.MTU)
 	for {
-		if err := h.conn.SetReadDeadline(time.Now().Add(time.Second * 2)); err != nil {
-			if !h.closing {
-				log.Error("icmp failed to set timeout ", err)
+		if err = h.conn.SetReadDeadline(time.Now().Add(time.Second * 2)); err != nil {
+			if ctxt.Err() != context.Canceled {
+				return fmt.Errorf("setReadDeadline error: %w", err)
 			}
 			return
 		}
 
-		n, _, err := h.conn.ReadFrom(buf)
-		if err != nil {
+		n, _, err1 := h.conn.ReadFrom(buf)
+		if err1 != nil {
 			icmpTable.cond.Broadcast() // wakeup all goroutines
 			if err1, ok := err.(net.Error); ok && err1.Temporary() {
-				// log.Info("ARP read error is temporary - retry", err1)
 				continue
 			}
-			log.Error("icmp conn.ReadFrom error ", err)
+			if ctxt.Err() != context.Canceled {
+				return fmt.Errorf("read error: %w", err)
+			}
 			return
 		}
 

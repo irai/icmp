@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"flag"
 	"fmt"
 	"net"
@@ -12,6 +13,7 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/irai/icmp"
+	"github.com/irai/icmp/icmp6"
 )
 
 var (
@@ -26,7 +28,23 @@ func main() {
 	icmp.LogAll = true
 	log.SetLevel(log.DebugLevel)
 
-	log.Infof("Using nic %v src=%v dst=%v", *nic, *srcIP, *dstIP)
+	fmt.Printf("icmpListener: Listen and send icmp messages\n")
+	fmt.Printf("Using nic %v src=%v dst=%v\n", *nic, *srcIP, *dstIP)
+
+	iif, err := net.InterfaceByName(*nic)
+	if err != nil {
+		fmt.Printf("error opening nic=%s: %s\n", *nic, err)
+		iif, _ := net.Interfaces()
+		fmt.Printf("available interfaces\n")
+		for _, v := range iif {
+			addrs, _ := v.Addrs()
+			fmt.Printf("  name=%s mac=%s\n", v.Name, v.HardwareAddr)
+			for _, v := range addrs {
+				fmt.Printf("    ip=%s\n", v)
+			}
+		}
+		return
+	}
 
 	src := net.ParseIP(*srcIP).To4()
 	if src.IsUnspecified() {
@@ -38,45 +56,91 @@ func main() {
 		log.Fatal("Invalid dst IP ", dstIP)
 	}
 
-	h, _ := icmp.New(*nic)
-	icmp.LogAll = true
-	defer h.Close()
+	ctxt, cancel := context.WithCancel(context.Background())
 
-	cmd(h, src, dst)
+	// ICMPv4
+	h4, err := icmp.New(*nic)
+	if err != nil {
+		log.Fatalf("Failed to create icmp nic=%s handler: ", *nic, err)
+	}
+	defer h4.Close()
+
+	go func() {
+		if err := h4.ListenAndServe(ctxt); err != nil {
+			log.Error("icmp4.ListenAndServe terminated unexpectedly: ", err)
+		}
+	}()
+
+	// ICMPv6
+
+	ula, _ := icmp6.GenerateULA(iif.HardwareAddr, 0)
+	fmt.Printf("IPv6 Unicast Local Address: %s\n", ula)
+
+	h6, err := icmp6.New(*nic)
+	if err != nil {
+		log.Fatalf("Failed to create icmp6 nic=%s handler: ", *nic, err)
+	}
+	defer h6.Close()
+
+	go func() {
+		if err := h6.ListenAndServe(ctxt); err != nil {
+			log.Error("icmp6.ListenAndServe terminated unexpectedly: ", err)
+		}
+	}()
+
+	time.Sleep(time.Millisecond * 200) //wait time to open sockets
+	cmd(h4, h6, src, dst)
+
+	cancel()
 }
 
-func cmd(h *icmp.Handler, srcIP net.IP, dstIP net.IP) {
+func cmd(h *icmp.Handler, h6 *icmp6.Handler, srcIP net.IP, dstIP net.IP) {
 	reader := bufio.NewReader(os.Stdin)
 	for {
-		fmt.Println("Command: (q)uit | (p)ing | (g) loG <level>")
+		fmt.Println("Command: (q)uit            | (p)ing | (l)list | (g) loG <level>")
+		fmt.Println("    ndp: (ra) ip6          | ")
 		fmt.Print("Enter command: ")
 		text, _ := reader.ReadString('\n')
 		text = strings.ToLower(text[:len(text)-1])
-		fmt.Println(text)
 
-		if text == "" || len(text) < 1 {
-			continue
+		// handle windows line feed
+		if len(text) > 1 && text[len(text)-1] == '\r' {
+			text = strings.ToLower(text[:len(text)-1])
 		}
 
-		switch text[0] {
-		case 'q':
+		if text == "" {
+			continue
+		}
+		tokens := strings.Split(text, " ")
+
+		switch tokens[0] {
+		case "q":
 			return
-		case 'l':
-			if len(text) < 3 {
-				text = text + "   "
+		case "g":
+			if icmp.LogAll {
+				fmt.Printf("Debugging is OFF\n")
+				icmp.LogAll = false
+			} else {
+				fmt.Printf("Debugging is ON\n")
+				icmp.LogAll = true
 			}
-			err := setLogLevel(text[2:])
-			if err != nil {
-				log.Error("invalid level. valid levels (error, warn, info, debug) ", err)
-				break
-			}
-		case 'p':
+		case "p":
 			now := time.Now()
 			if err := h.Ping(srcIP, dstIP, time.Second*4); err != nil {
 				log.Error("ping error ", err)
 				continue
 			}
 			fmt.Printf("ping %v time=%v\n", dstIP, time.Now().Sub(now))
+		case "ra":
+			if len(tokens) < 2 {
+				fmt.Println("missing address")
+				continue
+			}
+			ip := net.ParseIP(tokens[1])
+			if err := h6.RouterAdvertisement(&net.IPAddr{IP: ip}); err != nil {
+				log.Printf("error sending ra: %v", err)
+				continue
+			}
 		}
 	}
 }
