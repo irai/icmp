@@ -216,12 +216,12 @@ func (h *Handler) ListenAndServe(ctxt context.Context) (err error) {
 
 		n, _, err1 := h.conn.ReadFrom(buf)
 		if err1 != nil {
-			icmpTable.cond.Broadcast() // wakeup all goroutines
 			if err1, ok := err.(net.Error); ok && err1.Temporary() {
 				continue
 			}
+			icmpTable.cond.Broadcast() // wakeup all goroutines
 			if ctxt.Err() != context.Canceled {
-				return fmt.Errorf("read error: %w", err)
+				return fmt.Errorf("read error: %w", err1)
 			}
 			return
 		}
