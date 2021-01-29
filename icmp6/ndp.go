@@ -203,26 +203,26 @@ func (s *Handler) serve(ctxt context.Context, conn net.PacketConn) error {
 		switch msg.Type() {
 
 		case ipv6.ICMPTypeRouterSolicitation:
-			fmt.Printf("icmp6 router solicitation: %+v %+v", cm, msg)
+			fmt.Printf("icmp6 router solicitation: %+v %+v\n", cm, msg)
 			if err := s.RouterAdvertisement(addr); err != nil {
 				fmt.Printf("error in icmp6 router advertisement: %s", err)
 				continue
 			}
 
 		case ipv6.ICMPTypeRouterAdvertisement:
-			fmt.Printf("icmp6 router advertisement: %+v %+v", cm, msg)
+			fmt.Printf("icmp6 router advertisement: %+v %+v\n", cm, msg)
 			// m = new(RouterAdvertisement)
 
 		case ipv6.ICMPTypeNeighborAdvertisement:
-			fmt.Printf("icmp6 neighbor advertisement: %+v %+v", cm, msg)
+			fmt.Printf("icmp6 neighbor advertisement: %+v %+v\n", cm, msg)
 			// msg = ndp.NeighborAdvertisement(msg)
 
 		case ipv6.ICMPTypeNeighborSolicitation:
-			fmt.Printf("icmp6 neighbor solicitation: %+v %+v", cm, msg)
+			fmt.Printf("icmp6 neighbor solicitation: %+v %+v\n", cm, msg)
 			// m = new(NeighborSolicitation)
 
 		default:
-			log.Printf("icmp6 not implemented %+v msg=%+v", cm, msg)
+			log.Printf("icmp6 not implemented %+v msg=%+v\n", cm, msg)
 			fmt.Printf("msg=[% x]\n", buf[:n])
 		}
 	}
