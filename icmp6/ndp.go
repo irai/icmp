@@ -178,7 +178,7 @@ func (s *Handler) serve(ctxt context.Context, conn net.PacketConn) error {
 
 	buf := make([]byte, s.ifi.MTU)
 	for {
-		n, _, addr, err := s.pc.ReadFrom(buf)
+		n, cm, addr, err := s.pc.ReadFrom(buf)
 		if err != nil {
 			if err, ok := err.(net.Error); ok && err.Temporary() {
 				continue
@@ -193,36 +193,37 @@ func (s *Handler) serve(ctxt context.Context, conn net.PacketConn) error {
 		}
 
 		// This will parse and create a struct; should optimise this to use references to buffer
-		msg, err := ndp.ParseMessage(buf)
+		msg, err := ndp.ParseMessage(buf[:n])
 		if err != nil {
-			fmt.Printf("Invalid icmp6 msg: %s\n", err)
-			fmt.Printf("msg=[% x]\n", msg)
+			fmt.Printf("Invalid icmp6 msg cm=%+v: %s\n", cm, err)
+			fmt.Printf("msg=[% x]\n", buf[:n])
 			continue
 		}
 
 		switch msg.Type() {
 
 		case ipv6.ICMPTypeRouterSolicitation:
-			fmt.Printf("icmp6 router solicitation: %+v", msg)
+			fmt.Printf("icmp6 router solicitation: %+v %+v", cm, msg)
 			if err := s.RouterAdvertisement(addr); err != nil {
 				fmt.Printf("error in icmp6 router advertisement: %s", err)
 				continue
 			}
 
 		case ipv6.ICMPTypeRouterAdvertisement:
-			fmt.Printf("icmp6 router advertisement: %+v", msg)
+			fmt.Printf("icmp6 router advertisement: %+v %+v", cm, msg)
 			// m = new(RouterAdvertisement)
 
 		case ipv6.ICMPTypeNeighborAdvertisement:
-			fmt.Printf("icmp6 neighbor advertisement: %+v", msg)
+			fmt.Printf("icmp6 neighbor advertisement: %+v %+v", cm, msg)
 			// msg = ndp.NeighborAdvertisement(msg)
 
 		case ipv6.ICMPTypeNeighborSolicitation:
-			fmt.Printf("icmp6 neighbor solicitation: %+v", msg)
+			fmt.Printf("icmp6 neighbor solicitation: %+v %+v", cm, msg)
 			// m = new(NeighborSolicitation)
 
 		default:
-			log.Printf("icmp6 not implemented msg=%+v", msg)
+			log.Printf("icmp6 not implemented %+v msg=%+v", cm, msg)
+			fmt.Printf("msg=[% x]\n", buf[:n])
 		}
 	}
 
