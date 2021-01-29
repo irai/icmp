@@ -196,6 +196,7 @@ func (s *Handler) serve(ctxt context.Context, conn net.PacketConn) error {
 		msg, err := ndp.ParseMessage(buf)
 		if err != nil {
 			fmt.Printf("Invalid icmp6 msg: %s\n", err)
+			fmt.Printf("msg=[% x]\n", msg)
 			continue
 		}
 
