@@ -216,7 +216,7 @@ func (h *Handler) ListenAndServe(ctxt context.Context) (err error) {
 
 		n, _, err1 := h.conn.ReadFrom(buf)
 		if err1 != nil {
-			if err1, ok := err.(net.Error); ok && err1.Temporary() {
+			if err1, ok := err1.(net.Error); ok && err1.Temporary() {
 				continue
 			}
 			icmpTable.cond.Broadcast() // wakeup all goroutines
