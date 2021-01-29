@@ -160,12 +160,14 @@ func (s *Handler) serve(ctxt context.Context, conn net.PacketConn) error {
 	s.pc.SetHopLimit(255)          // as per RFC 4861, section 4.1
 	s.pc.SetMulticastHopLimit(255) // as per RFC 4861, section 4.1
 
+	/**
 	var filter ipv6.ICMPFilter
 	filter.SetAll(true)
 	filter.Accept(ipv6.ICMPTypeRouterSolicitation)
 	if err := s.pc.SetICMPFilter(&filter); err != nil {
 		return err
 	}
+	**/
 
 	go func() {
 		for {
