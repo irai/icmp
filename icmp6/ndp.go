@@ -195,7 +195,7 @@ func (s *Handler) serve(ctxt context.Context, conn net.PacketConn) error {
 		// This will parse and create a struct; should optimise this to use references to buffer
 		msg, err := ndp.ParseMessage(buf)
 		if err != nil {
-			fmt.Printf("Invalid icmp6 msg: %s", err)
+			fmt.Printf("Invalid icmp6 msg: %s\n", err)
 			continue
 		}
 
