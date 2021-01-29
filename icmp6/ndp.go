@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/irai/icmp"
 	"github.com/mdlayher/ndp"
 	"github.com/mdlayher/netx/rfc4193"
 
@@ -155,7 +154,7 @@ func (s *Handler) RouterAdvertisement(addr net.Addr) error {
 	return nil
 }
 
-func (s *Handler) serve(conn net.PacketConn) error {
+func (s *Handler) serve(ctxt context.Context, conn net.PacketConn) error {
 
 	s.pc = ipv6.NewPacketConn(conn)
 	s.pc.SetHopLimit(255)          // as per RFC 4861, section 4.1
@@ -179,9 +178,14 @@ func (s *Handler) serve(conn net.PacketConn) error {
 	for {
 		n, _, addr, err := s.pc.ReadFrom(buf)
 		if err != nil {
+			if err, ok := err.(net.Error); ok && err.Temporary() {
+				continue
+			}
+			if ctxt.Err() == context.Canceled {
+				return nil
+			}
 			return err
 		}
-		// TODO: isn’t this guaranteed by the filter above?
 		if n == 0 {
 			continue
 		}
@@ -192,14 +196,28 @@ func (s *Handler) serve(conn net.PacketConn) error {
 			fmt.Printf("Invalid icmp6 msg: %s", err)
 			continue
 		}
-		if icmp.LogAll {
-			fmt.Printf("icmp6 recvd %s", msg)
-		}
+
 		switch msg.Type() {
+
 		case ipv6.ICMPTypeRouterSolicitation:
+			fmt.Printf("icmp6 router solicitation: %+v", msg)
 			if err := s.RouterAdvertisement(addr); err != nil {
-				return err
+				fmt.Printf("error in icmp6 router advertisement: %s", err)
+				continue
 			}
+
+		case ipv6.ICMPTypeRouterAdvertisement:
+			fmt.Printf("icmp6 router advertisement: %+v", msg)
+			// m = new(RouterAdvertisement)
+
+		case ipv6.ICMPTypeNeighborAdvertisement:
+			fmt.Printf("icmp6 neighbor advertisement: %+v", msg)
+			// msg = ndp.NeighborAdvertisement(msg)
+
+		case ipv6.ICMPTypeNeighborSolicitation:
+			fmt.Printf("icmp6 neighbor solicitation: %+v", msg)
+			// m = new(NeighborSolicitation)
+
 		default:
 			log.Printf("icmp6 not implemented msg=%+v", msg)
 		}
@@ -215,5 +233,5 @@ func (s *Handler) ListenAndServe(ctxt context.Context) error {
 	if err != nil {
 		return err
 	}
-	return s.serve(conn)
+	return s.serve(ctxt, conn)
 }
