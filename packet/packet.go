@@ -21,11 +21,11 @@ const (
 	IP6HeaderLen = 40 // IP6 header len
 )
 
-// RawEthPacket provide access to ethernet fields without copying the structure
+// Ether provide access to ethernet fields without copying the structure
 // see: https://medium.com/@mdlayher/network-protocol-breakdown-ethernet-and-go-de985d726cc1
-type RawEthPacket []byte
+type Ether []byte
 
-func (p RawEthPacket) IsValid() bool {
+func (p Ether) IsValid() bool {
 	// Minimum len to contain two hardware address and EtherType (2 bytes)
 	if len(p) < 14 {
 		return false
@@ -33,9 +33,10 @@ func (p RawEthPacket) IsValid() bool {
 	return true
 }
 
-func (p RawEthPacket) EtherType() uint16 { return binary.BigEndian.Uint16(p[12:14]) }
-func (p RawEthPacket) Payload() []byte {
-
+func (p Ether) Dst() net.HardwareAddr { return net.HardwareAddr(p[:6]) }
+func (p Ether) Src() net.HardwareAddr { return net.HardwareAddr(p[6 : 6+6]) }
+func (p Ether) EtherType() uint16     { return binary.BigEndian.Uint16(p[12:14]) }
+func (p Ether) Payload() []byte {
 	if p.EtherType() == EthTypeIP4 || p.EtherType() == EthTypeIP6 {
 		return p[14:]
 	}
@@ -52,10 +53,9 @@ func (p RawEthPacket) Payload() []byte {
 	}
 	return p[14:]
 }
-func (p RawEthPacket) Dst() net.HardwareAddr { return net.HardwareAddr(p[8 : 8+6]) }
-func (p RawEthPacket) Src() net.HardwareAddr { return net.HardwareAddr(p[14 : 14+6]) }
-func (p RawEthPacket) String() string {
-	return fmt.Sprintf("type: %x src: %v dst: %v len: %v", p.EtherType(), p.Src(), p.Dst(), len(p))
+
+func (p Ether) String() string {
+	return fmt.Sprintf("type=%x src=%v dst=%v len=%v", p.EtherType(), p.Src(), p.Dst(), len(p))
 }
 
 // IP4 provide access to IP fields without copying data.
@@ -85,7 +85,7 @@ func (p IP4) Dst() net.IP     { return net.IPv4(p[16], p[17], p[18], p[19]) }
 func (p IP4) TotalLen() int   { return int(binary.BigEndian.Uint16(p[2:4])) }
 func (p IP4) Payload() []byte { return p[p.IHL():] }
 func (p IP4) String() string {
-	return fmt.Sprintf("version: %v src: %v dst: %v proto: %v ttl:%v tos: %v", p.Version(), p.Src(), p.Dst(), p.Protocol(), p.TTL(), p.TOS())
+	return fmt.Sprintf("version=%v src=%v dst=%v proto=%v ttl=%v tos=%v", p.Version(), p.Src(), p.Dst(), p.Protocol(), p.TTL(), p.TOS())
 }
 
 type ICMP4 []byte
@@ -102,11 +102,11 @@ func (p ICMP4) String() string {
 
 	switch p.Type() {
 	case ICMPTypeEchoReply:
-		return fmt.Sprintf("echo reply code: %v id: %v data: %v", p.EchoID(), p.Code(), string(p.EchoData()))
+		return fmt.Sprintf("echo reply code=%v id=%v data=%v", p.EchoID(), p.Code(), string(p.EchoData()))
 	case ICMPTypeEchoRequest:
-		return fmt.Sprintf("echo request code: %v id: %v data: %v", p.EchoID(), p.Code(), string(p.EchoData()))
+		return fmt.Sprintf("echo request code=%v id=%v data=%v", p.EchoID(), p.Code(), string(p.EchoData()))
 	}
-	return fmt.Sprintf("type %v code: %v", p.Type(), p.Code())
+	return fmt.Sprintf("type=%v code=%v", p.Type(), p.Code())
 }
 
 // IP6 structure: see https://github.com/golang/net/blob/master/ipv6/header.go
@@ -130,5 +130,5 @@ func (p IP6) Src() net.IP       { return net.IP(p[8:24]) }                      
 func (p IP6) Dst() net.IP       { return net.IP(p[24:40]) }                              // destination address
 func (p IP6) Payload() []byte   { return p[40:] }
 func (p IP6) String() string {
-	return fmt.Sprintf("version: %v src: %v dst: %v nextHeader: %v hoplimit:%v class: %v", p.Version(), p.Src(), p.Dst(), p.NextHeader(), p.HopLimit(), p.TrafficClass())
+	return fmt.Sprintf("version=%v src=%v dst=%v nextHeader=%v hoplimit=%v class=%v", p.Version(), p.Src(), p.Dst(), p.NextHeader(), p.HopLimit(), p.TrafficClass())
 }
