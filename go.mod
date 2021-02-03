@@ -8,5 +8,6 @@ require (
 	github.com/mdlayher/netx v0.0.0-20200512211805-669a06fde734
 	github.com/mdlayher/raw v0.0.0-20191009151244-50f2db8cc065
 	github.com/sirupsen/logrus v1.4.2
+	gitlab.com/golang-commonmark/puny v0.0.0-20191124015043-9f83538fa04f
 	golang.org/x/net v0.0.0-20200707034311-ab3426394381
 )

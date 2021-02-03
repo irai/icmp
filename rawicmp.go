@@ -7,6 +7,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/irai/icmp/icmp6"
 	"github.com/mdlayher/raw"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/bpf"
@@ -20,14 +21,18 @@ var LogAll bool
 
 // Handler maintains the underlying socket connection
 type Handler struct {
-	ifi  *net.Interface
-	conn net.PacketConn
+	ifi   *net.Interface
+	conn  net.PacketConn
+	conn6 net.PacketConn
 }
 
+// Ethernet packet types - ETHER_TYPE
 const (
-	// Ethernet packet types - ETHER_TYPE
-	ETH_P_IP    = 0x800  // IP
-	ETH_P_8021Q = 0x8100 // VLAN
+	ETH_P_IP     = 0x800  // IPv4
+	ETH_P_IP6    = 0x86DD // IPv6
+	ETH_P_ARP    = 0x0806 // ARP
+	ETH_P_8021Q  = 0x8100 // VLAN 802.1Q
+	ETH_P_8021AD = 0x88a8 // VLAN 802.1ad
 
 	// ICMP Packet types
 	ICMPTypeEchoReply   = 0
@@ -59,7 +64,7 @@ func (p RawEthPacket) Payload() []byte {
 	if p.EtherType() == ETH_P_8021Q { // add 2 bytes to frame
 		return p[16:]
 	}
-	if p.EtherType() == 0x88a8 { // add 6 bytes to frame
+	if p.EtherType() == ETH_P_8021AD { // add 6 bytes to frame
 		return p[20:]
 	}
 	return p[14:]
@@ -174,7 +179,9 @@ func (h *Handler) Close() error {
 }
 
 func (h *Handler) ListenAndServe(ctxt context.Context) (err error) {
-	bpf, err := bpf.Assemble([]bpf.Instruction{
+
+	/*****
+	bpf2, err := bpf.Assemble([]bpf.Instruction{
 		// Load EtherType value from Ethernet header
 		bpf.LoadAbsolute{
 			Off:  14 + 9, // IP Protocol field - 14 Eth bytes + 9 IP header
@@ -196,6 +203,27 @@ func (h *Handler) ListenAndServe(ctxt context.Context) (err error) {
 		bpf.RetConstant{
 			Val: 1500,
 		},
+	})
+	****/
+
+	bpf, err := bpf.Assemble([]bpf.Instruction{
+		// Check EtherType
+		bpf.LoadAbsolute{Off: 12, Size: 2},
+		// 80221Q?
+		bpf.JumpIf{Cond: bpf.JumpNotEqual, Val: ETH_P_8021Q, SkipTrue: 1}, // EtherType is 2 pushed out by two bytes
+		bpf.LoadAbsolute{Off: 14, Size: 2},
+		// IPv4 && ICMPv4?
+		bpf.JumpIf{Cond: bpf.JumpNotEqual, Val: ETH_P_IP, SkipTrue: 4},
+		bpf.LoadAbsolute{Off: 14 + 9, Size: 1},                  // IPv4 Protocol field - 14 Eth bytes + 9 IPv4 header
+		bpf.JumpIf{Cond: bpf.JumpNotEqual, Val: 1, SkipTrue: 1}, // ICMPv4 protocol - 1
+		bpf.RetConstant{Val: 1540},                              // matches ICMPv4, accept up to 1540 (1500 payload + ether header)
+		bpf.RetConstant{Val: 0},
+		// IPv6 && ICMPv6?
+		bpf.JumpIf{Cond: bpf.JumpNotEqual, Val: ETH_P_IP6, SkipTrue: 3},
+		bpf.LoadAbsolute{Off: 14 + 6, Size: 1},                   // IPv6 Protocol field - 14 Eth bytes + 6 IPv6 header
+		bpf.JumpIf{Cond: bpf.JumpNotEqual, Val: 58, SkipTrue: 1}, // ICMPv6 protocol - 58
+		bpf.RetConstant{Val: 1540},                               // matches ICMPv6, accept up to 1540 (1500 payload + ether header)
+		bpf.RetConstant{Val: 0},
 	})
 
 	h.conn, err = raw.ListenPacket(h.ifi, ETH_P_IP, &raw.Config{Filter: bpf})
@@ -227,8 +255,14 @@ func (h *Handler) ListenAndServe(ctxt context.Context) (err error) {
 		}
 
 		ether := RawEthPacket(buf[:n])
-		if ether.EtherType() != ETH_P_IP || !ether.IsValid() {
+		if ether.EtherType() != ETH_P_IP || ether.EtherType() != ETH_P_IP6 || !ether.IsValid() {
 			log.Error("icmp invalid ethernet packet ", ether.EtherType())
+			continue
+		}
+
+		if ether.EtherType() == ETH_P_IP6 {
+			fmt.Println("icmp: got ipv6 packet")
+			icmp6.Process(buf)
 			continue
 		}
 
