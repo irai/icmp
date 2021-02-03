@@ -105,7 +105,7 @@ func (p ICMP4) String() string {
 type IP6 []byte
 
 func (p IP6) IsValid() bool {
-	if len(p) == 40 {
+	if len(p) < 40 {
 		return true
 	}
 	return false

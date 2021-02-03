@@ -6,7 +6,6 @@ import (
 	"net"
 	"time"
 
-	"github.com/irai/icmp/icmp6"
 	"github.com/irai/icmp/packet"
 	"github.com/mdlayher/raw"
 	log "github.com/sirupsen/logrus"
@@ -163,14 +162,8 @@ func (h *Handler) ListenAndServe(ctxt context.Context) (err error) {
 		}
 
 		ether := packet.RawEthPacket(buf[:n])
-		if (ether.EtherType() != packet.ETH_P_IP && ether.EtherType() != packet.ETH_P_IP6) || !ether.IsValid() {
+		if ether.EtherType() != packet.ETH_P_IP || !ether.IsValid() {
 			log.Error("icmp invalid ethernet packet ", ether.EtherType())
-			continue
-		}
-
-		if ether.EtherType() == packet.ETH_P_IP6 {
-			fmt.Println("icmp: got ipv6 packet")
-			icmp6.Process(buf)
 			continue
 		}
 

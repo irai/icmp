@@ -73,7 +73,7 @@ func (s *Handler) AddNotificationChannel(notification chan<- Message) {
 	s.notification = notification
 }
 
-func Process(ether packet.RawEthPacket) error {
+func processPacket(ether packet.RawEthPacket) error {
 
 	ip6Frame := packet.IP6(ether.Payload())
 	if !ip6Frame.IsValid() {
@@ -113,53 +113,6 @@ func Process(ether packet.RawEthPacket) error {
 	}
 	return nil
 }
-
-/****
-func (s *Handler) ListenAndServe(ctxt context.Context) error {
-	// TODO(correctness): would it be better to listen on
-	// net.IPv6linklocalallrouters? Just specifying that results in an error,
-	// though.
-	conn, err := net.ListenIP("ip6:ipv6-icmp", &net.IPAddr{IP: net.IPv6unspecified, Zone: ""})
-	if err != nil {
-		return err
-	}
-
-	s.pc = ipv6.NewPacketConn(conn)
-	s.pc.SetHopLimit(255)          // as per RFC 4861, section 4.1
-	s.pc.SetMulticastHopLimit(255) // as per RFC 4861, section 4.1
-
-	var filter ipv6.ICMPFilter
-	filter.SetAll(true)
-	filter.Accept(ipv6.ICMPTypeRouterSolicitation)
-	if err := s.pc.SetICMPFilter(&filter); err != nil {
-		return err
-	}
-
-	go func() {
-		for {
-			s.RouterAdvertisement(nil) // TODO: handle error
-			time.Sleep(1 * time.Minute)
-		}
-	}()
-
-	buf := make([]byte, s.ifi.MTU)
-	for {
-		n, _, _, err := s.pc.ReadFrom(buf)
-		if err != nil {
-			if err, ok := err.(net.Error); ok && err.Temporary() {
-				continue
-			}
-			if ctxt.Err() == context.Canceled {
-				return nil
-			}
-			return err
-		}
-		if n == 0 {
-			continue
-		}
-	}
-}
-***/
 
 func (h *Handler) ListenAndServe(ctxt context.Context) (err error) {
 
@@ -208,12 +161,14 @@ func (h *Handler) ListenAndServe(ctxt context.Context) (err error) {
 		}
 
 		ether := packet.RawEthPacket(buf[:n])
-		if (ether.EtherType() != packet.ETH_P_IP && ether.EtherType() != packet.ETH_P_IP6) || !ether.IsValid() {
+		if ether.EtherType() != packet.ETH_P_IP6 || !ether.IsValid() {
 			log.Error("icmp invalid ethernet packet ", ether.EtherType())
 			continue
 		}
 
-		fmt.Println("icmp: got ipv6 packet")
-		Process(ether)
+		fmt.Println("icmp: got ipv6 packet type=", ether.EtherType())
+		if err := processPacket(ether); err != nil {
+			fmt.Printf("icmp6 error processing packet: %s", err)
+		}
 	}
 }
