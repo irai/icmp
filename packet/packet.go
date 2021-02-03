@@ -52,6 +52,11 @@ func (p RawEthPacket) Payload() []byte {
 	}
 	return p[14:]
 }
+func (p RawEthPacket) Dst() net.HardwareAddr { return net.HardwareAddr(p[8 : 8+6]) }
+func (p RawEthPacket) Src() net.HardwareAddr { return net.HardwareAddr(p[14 : 14+6]) }
+func (p RawEthPacket) String() string {
+	return fmt.Sprintf("type: %x src: %v dst: %v len: %v", p.EtherType(), p.Src(), p.Dst(), len(p))
+}
 
 // IP4 provide access to IP fields without copying data.
 // see: ipv4.ParseHeader in https://raw.githubusercontent.com/golang/net/master/ipv4/header.go
@@ -108,7 +113,7 @@ func (p ICMP4) String() string {
 type IP6 []byte
 
 func (p IP6) IsValid() bool {
-	if len(p) >= IP6HeaderLen && p.PayloadLen()+IP6HeaderLen != len(p) {
+	if len(p) >= IP6HeaderLen && p.PayloadLen()+IP6HeaderLen == len(p) {
 		return true
 	}
 	fmt.Println("warning payload differ ", len(p), p.PayloadLen()+IP6HeaderLen)
