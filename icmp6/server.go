@@ -3,19 +3,28 @@ package icmp6
 import (
 	"context"
 	"fmt"
-	"log"
 	"net"
 	"sync"
+	"time"
 
+	log "github.com/sirupsen/logrus"
+
+	"github.com/irai/icmp/packet"
 	"github.com/mdlayher/netx/rfc4193"
+	"github.com/mdlayher/raw"
 
+	"golang.org/x/net/bpf"
 	"golang.org/x/net/ipv6"
 )
+
+// LogAll packets turn on logging if desirable
+var LogAll bool
 
 // Handler implements ICMPv6 Neighbor Discovery Protocol
 // see: https://mdlayher.com/blog/network-protocol-breakdown-ndp-and-go/
 type Handler struct {
 	pc           *ipv6.PacketConn
+	conn         *raw.Conn
 	mutex        sync.Mutex
 	prefixes     []net.IPNet
 	ifi          *net.Interface
@@ -64,12 +73,17 @@ func (s *Handler) AddNotificationChannel(notification chan<- Message) {
 	s.notification = notification
 }
 
-func Process(buf []byte) error {
+func Process(ether packet.RawEthPacket) error {
 
-	// This will parse and create a struct; should optimise this to use references to buffer
-	msg, err := ParseMessage(buf)
+	ip6Frame := packet.IP6(ether.Payload())
+	if !ip6Frame.IsValid() {
+		return fmt.Errorf("invalid icmp packet type: %s", ether.EtherType())
+	}
+
+	// TODO: This will parse and create a struct; should optimise this to use references to buffer
+	msg, err := ParseMessage(ip6Frame.Payload())
 	if err != nil {
-		fmt.Printf("msg=[% x]\n", buf)
+		fmt.Printf("msg=[% x]\n", ip6Frame.Payload())
 		return err
 	}
 
@@ -96,11 +110,11 @@ func Process(buf []byte) error {
 
 	default:
 		log.Printf("icmp6 not implemented msg=%+v\n", msg)
-		fmt.Printf("msg=[% x]\n", buf)
 	}
 	return nil
 }
 
+/****
 func (s *Handler) ListenAndServe(ctxt context.Context) error {
 	// TODO(correctness): would it be better to listen on
 	// net.IPv6linklocalallrouters? Just specifying that results in an error,
@@ -114,7 +128,6 @@ func (s *Handler) ListenAndServe(ctxt context.Context) error {
 	s.pc.SetHopLimit(255)          // as per RFC 4861, section 4.1
 	s.pc.SetMulticastHopLimit(255) // as per RFC 4861, section 4.1
 
-	/**
 	var filter ipv6.ICMPFilter
 	filter.SetAll(true)
 	filter.Accept(ipv6.ICMPTypeRouterSolicitation)
@@ -128,7 +141,6 @@ func (s *Handler) ListenAndServe(ctxt context.Context) error {
 			time.Sleep(1 * time.Minute)
 		}
 	}()
-	**/
 
 	buf := make([]byte, s.ifi.MTU)
 	for {
@@ -145,5 +157,63 @@ func (s *Handler) ListenAndServe(ctxt context.Context) error {
 		if n == 0 {
 			continue
 		}
+	}
+}
+***/
+
+func (h *Handler) ListenAndServe(ctxt context.Context) (err error) {
+
+	bpf, err := bpf.Assemble([]bpf.Instruction{
+		// Check EtherType
+		bpf.LoadAbsolute{Off: 12, Size: 2},
+		// 80221Q?
+		bpf.JumpIf{Cond: bpf.JumpEqual, Val: packet.ETH_P_8021Q, SkipFalse: 1}, // EtherType is 2 pushed out by two bytes
+		bpf.LoadAbsolute{Off: 14, Size: 2},
+		// IPv6 && ICMPv6?
+		bpf.JumpIf{Cond: bpf.JumpEqual, Val: packet.ETH_P_IP6, SkipFalse: 3},
+		bpf.LoadAbsolute{Off: 14 + 6, Size: 1},                 // IPv6 Protocol field - 14 Eth bytes + 6 IPv6 header
+		bpf.JumpIf{Cond: bpf.JumpEqual, Val: 58, SkipFalse: 1}, // ICMPv6 protocol - 58
+		bpf.RetConstant{Val: 1540},                             // matches ICMPv6, accept up to 1540 (1500 payload + ether header)
+		bpf.RetConstant{Val: 0},
+	})
+	if err != nil {
+		log.Fatal("bpf assemble error", err)
+	}
+
+	h.conn, err = raw.ListenPacket(h.ifi, packet.ETH_P_IP6, &raw.Config{Filter: bpf})
+	if err != nil {
+		h.conn = nil // on windows, not impleted returns a partially completed conn
+		return fmt.Errorf("raw.ListenPacket error: %w", err)
+	}
+	defer h.conn.Close()
+
+	buf := make([]byte, h.ifi.MTU)
+	for {
+		if err = h.conn.SetReadDeadline(time.Now().Add(time.Second * 2)); err != nil {
+			if ctxt.Err() != context.Canceled {
+				return fmt.Errorf("setReadDeadline error: %w", err)
+			}
+			return
+		}
+
+		n, _, err1 := h.conn.ReadFrom(buf)
+		if err1 != nil {
+			if err1, ok := err1.(net.Error); ok && err1.Temporary() {
+				continue
+			}
+			if ctxt.Err() != context.Canceled {
+				return fmt.Errorf("read error: %w", err1)
+			}
+			return
+		}
+
+		ether := packet.RawEthPacket(buf[:n])
+		if (ether.EtherType() != packet.ETH_P_IP && ether.EtherType() != packet.ETH_P_IP6) || !ether.IsValid() {
+			log.Error("icmp invalid ethernet packet ", ether.EtherType())
+			continue
+		}
+
+		fmt.Println("icmp: got ipv6 packet")
+		Process(ether)
 	}
 }

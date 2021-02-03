@@ -2,12 +2,12 @@ package icmp
 
 import (
 	"context"
-	"encoding/binary"
 	"fmt"
 	"net"
 	"time"
 
 	"github.com/irai/icmp/icmp6"
+	"github.com/irai/icmp/packet"
 	"github.com/mdlayher/raw"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/bpf"
@@ -26,102 +26,7 @@ type Handler struct {
 	conn6 net.PacketConn
 }
 
-// Ethernet packet types - ETHER_TYPE
-const (
-	ETH_P_IP     = 0x800  // IPv4
-	ETH_P_IP6    = 0x86DD // IPv6
-	ETH_P_ARP    = 0x0806 // ARP
-	ETH_P_8021Q  = 0x8100 // VLAN 802.1Q
-	ETH_P_8021AD = 0x88a8 // VLAN 802.1ad
-
-	// ICMP Packet types
-	ICMPTypeEchoReply   = 0
-	ICMPTypeEchoRequest = 8
-)
-
-// RawEthPacket provide access to ethernet fields without copying the structure
-// see: https://medium.com/@mdlayher/network-protocol-breakdown-ethernet-and-go-de985d726cc1
-type RawEthPacket []byte
-
-func (p RawEthPacket) IsValid() bool {
-	// Minimum len to contain two hardware address and EtherType (2 bytes)
-	if len(p) < 14 {
-		return false
-	}
-	return true
-}
-
-func (p RawEthPacket) EtherType() uint16 { return binary.BigEndian.Uint16(p[12:14]) }
-func (p RawEthPacket) Payload() []byte {
-
-	if p.EtherType() == ETH_P_IP {
-		return p[14:]
-	}
-	// The IEEE 802.1Q tag, if present, then two EtherType contains the Tag Protocol Identifier (TPID) value of 0x8100
-	// and true EtherType/Length is located after the Q-tag.
-	// The TPID is followed by two octets containing the Tag Control Information (TCI) (the IEEE 802.1p priority (quality of service) and VLAN id).
-	// also handle 802.1ad - 0x88a8
-	if p.EtherType() == ETH_P_8021Q { // add 2 bytes to frame
-		return p[16:]
-	}
-	if p.EtherType() == ETH_P_8021AD { // add 6 bytes to frame
-		return p[20:]
-	}
-	return p[14:]
-}
-
-// RawIPPacket provide access to IP fields without copying data.
-// see: ipv4.ParseHeader in https://raw.githubusercontent.com/golang/net/master/ipv4/header.go
-type RawIPPacket []byte
-
-func (p RawIPPacket) IsValid() bool {
-	if len(p) < 20 {
-		return false
-	}
-
-	if len(p) < p.IHL() {
-		return false
-	}
-	return true
-}
-
-func (p RawIPPacket) IHL() int        { return int(p[0]&0x0f) << 2 } // Internet header length
-func (p RawIPPacket) Version() int    { return int(p[0] >> 4) }
-func (p RawIPPacket) Protocol() int   { return int(p[9]) }
-func (p RawIPPacket) TOS() int        { return int(p[1]) }
-func (p RawIPPacket) ID() int         { return int(binary.BigEndian.Uint16(p[4:6])) }
-func (p RawIPPacket) TTL() int        { return int(p[8]) }
-func (p RawIPPacket) Checksum() int   { return int(binary.BigEndian.Uint16(p[10:12])) }
-func (p RawIPPacket) Src() net.IP     { return net.IPv4(p[12], p[13], p[14], p[15]) }
-func (p RawIPPacket) Dst() net.IP     { return net.IPv4(p[16], p[17], p[18], p[19]) }
-func (p RawIPPacket) TotalLen() int   { return int(binary.BigEndian.Uint16(p[2:4])) }
-func (p RawIPPacket) Payload() []byte { return p[p.IHL():] }
-func (p RawIPPacket) String() string {
-	return fmt.Sprintf("version: %v src: %v dst: %v proto: %v ttl:%v tos: %v", p.Version(), p.Src(), p.Dst(), p.Protocol(), p.TTL(), p.TOS())
-}
-
-type RawICMPPacket []byte
-
-func (p RawICMPPacket) Type() uint8          { return uint8(p[0]) }
-func (p RawICMPPacket) Code() int            { return int(p[1]) }
-func (p RawICMPPacket) Checksum() int        { return int(binary.BigEndian.Uint16(p[2:4])) }
-func (p RawICMPPacket) RestOfHeader() []byte { return p[4:8] }
-func (p RawICMPPacket) EchoID() uint16       { return binary.BigEndian.Uint16(p[4:6]) }
-func (p RawICMPPacket) EchoSeq() uint16      { return binary.BigEndian.Uint16(p[6:8]) }
-func (p RawICMPPacket) EchoData() string     { return string(p[8:]) }
-func (p RawICMPPacket) Payload() []byte      { return p[8:] }
-func (p RawICMPPacket) String() string {
-
-	switch p.Type() {
-	case ICMPTypeEchoReply:
-		return fmt.Sprintf("echo reply code: %v id: %v data: %v", p.EchoID(), p.Code(), string(p.EchoData()))
-	case ICMPTypeEchoRequest:
-		return fmt.Sprintf("echo request code: %v id: %v data: %v", p.EchoID(), p.Code(), string(p.EchoData()))
-	}
-	return fmt.Sprintf("type %v code: %v", p.Type(), p.Code())
-}
-
-func (h *Handler) sendRawICMP(src net.IP, dst net.IP, p RawICMPPacket) error {
+func (h *Handler) sendRawICMP(src net.IP, dst net.IP, p packet.ICMP4) error {
 
 	// TODO: reuse h.conn and write directly to socket
 	c, err := net.ListenPacket("ip4:1", "0.0.0.0") // ICMP for IPv4
@@ -210,16 +115,16 @@ func (h *Handler) ListenAndServe(ctxt context.Context) (err error) {
 		// Check EtherType
 		bpf.LoadAbsolute{Off: 12, Size: 2},
 		// 80221Q?
-		bpf.JumpIf{Cond: bpf.JumpEqual, Val: ETH_P_8021Q, SkipFalse: 1}, // EtherType is 2 pushed out by two bytes
+		bpf.JumpIf{Cond: bpf.JumpEqual, Val: packet.ETH_P_8021Q, SkipFalse: 1}, // EtherType is 2 pushed out by two bytes
 		bpf.LoadAbsolute{Off: 14, Size: 2},
 		// IPv4 && ICMPv4?
-		bpf.JumpIf{Cond: bpf.JumpEqual, Val: ETH_P_IP, SkipFalse: 4},
+		bpf.JumpIf{Cond: bpf.JumpEqual, Val: packet.ETH_P_IP, SkipFalse: 4},
 		bpf.LoadAbsolute{Off: 14 + 9, Size: 1},                // IPv4 Protocol field - 14 Eth bytes + 9 IPv4 header
 		bpf.JumpIf{Cond: bpf.JumpEqual, Val: 1, SkipFalse: 1}, // ICMPv4 protocol - 1
 		bpf.RetConstant{Val: 1540},                            // matches ICMPv4, accept up to 1540 (1500 payload + ether header)
 		bpf.RetConstant{Val: 0},
 		// IPv6 && ICMPv6?
-		bpf.JumpIf{Cond: bpf.JumpEqual, Val: ETH_P_IP6, SkipFalse: 3},
+		bpf.JumpIf{Cond: bpf.JumpEqual, Val: packet.ETH_P_IP6, SkipFalse: 3},
 		bpf.LoadAbsolute{Off: 14 + 6, Size: 1},                 // IPv6 Protocol field - 14 Eth bytes + 6 IPv6 header
 		bpf.JumpIf{Cond: bpf.JumpEqual, Val: 58, SkipFalse: 1}, // ICMPv6 protocol - 58
 		bpf.RetConstant{Val: 1540},                             // matches ICMPv6, accept up to 1540 (1500 payload + ether header)
@@ -229,7 +134,7 @@ func (h *Handler) ListenAndServe(ctxt context.Context) (err error) {
 		log.Fatal("bpf assemble error", err)
 	}
 
-	h.conn, err = raw.ListenPacket(h.ifi, ETH_P_IP, &raw.Config{Filter: bpf})
+	h.conn, err = raw.ListenPacket(h.ifi, packet.ETH_P_IP, &raw.Config{Filter: bpf})
 	if err != nil {
 		h.conn = nil // on windows, not impleted returns a partially completed conn
 		return fmt.Errorf("raw.ListenPacket error: %w", err)
@@ -257,19 +162,19 @@ func (h *Handler) ListenAndServe(ctxt context.Context) (err error) {
 			return
 		}
 
-		ether := RawEthPacket(buf[:n])
-		if (ether.EtherType() != ETH_P_IP && ether.EtherType() != ETH_P_IP6) || !ether.IsValid() {
+		ether := packet.RawEthPacket(buf[:n])
+		if (ether.EtherType() != packet.ETH_P_IP && ether.EtherType() != packet.ETH_P_IP6) || !ether.IsValid() {
 			log.Error("icmp invalid ethernet packet ", ether.EtherType())
 			continue
 		}
 
-		if ether.EtherType() == ETH_P_IP6 {
+		if ether.EtherType() == packet.ETH_P_IP6 {
 			fmt.Println("icmp: got ipv6 packet")
 			icmp6.Process(buf)
 			continue
 		}
 
-		ipFrame := RawIPPacket(ether.Payload())
+		ipFrame := packet.IP4(ether.Payload())
 		if !ipFrame.IsValid() {
 			log.Error("icmp invalid ip packet ", ether.EtherType())
 			continue
@@ -281,10 +186,10 @@ func (h *Handler) ListenAndServe(ctxt context.Context) (err error) {
 			continue
 		}
 
-		icmpFrame := RawICMPPacket(ipFrame.Payload())
+		icmpFrame := packet.ICMP4(ipFrame.Payload())
 
 		switch icmpFrame.Type() {
-		case ICMPTypeEchoReply:
+		case packet.ICMPTypeEchoReply:
 			if LogAll {
 				log.WithFields(log.Fields{"group": "icmp"}).Debugf("rcvd icmp %+v ", icmpFrame)
 			}
@@ -312,7 +217,7 @@ func (h *Handler) ListenAndServe(ctxt context.Context) (err error) {
 			icmpTable.cond.L.Unlock()
 			icmpTable.cond.Broadcast()
 
-		case ICMPTypeEchoRequest:
+		case packet.ICMPTypeEchoRequest:
 			if LogAll {
 				log.WithFields(log.Fields{"group": "icmp", "type": icmpFrame.Type(), "code": icmpFrame.Code()}).Debugf("rcvd unimplemented icmp packet % X ", icmpFrame.Payload())
 			}
