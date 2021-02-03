@@ -161,7 +161,7 @@ func (h *Handler) ListenAndServe(ctxt context.Context) (err error) {
 			return
 		}
 
-		ether := packet.RawEthPacket(buf[:n])
+		ether := packet.Ether(buf[:n])
 		if ether.EtherType() != packet.EthTypeIP4 || !ether.IsValid() {
 			log.Error("icmp invalid ethernet packet ", ether.EtherType())
 			continue

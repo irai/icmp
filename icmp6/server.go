@@ -73,7 +73,7 @@ func (s *Handler) AddNotificationChannel(notification chan<- Message) {
 	s.notification = notification
 }
 
-func processPacket(ether packet.RawEthPacket) error {
+func processPacket(ether packet.Ether) error {
 
 	ip6Frame := packet.IP6(ether.Payload())
 	if !ip6Frame.IsValid() {
@@ -167,7 +167,7 @@ func (h *Handler) ListenAndServe(ctxt context.Context) (err error) {
 			return
 		}
 
-		ether := packet.RawEthPacket(buf[:n])
+		ether := packet.Ether(buf[:n])
 		if ether.EtherType() != packet.EthTypeIP6 || !ether.IsValid() {
 			log.Error("icmp invalid ethernet packet ", ether.EtherType())
 			continue
