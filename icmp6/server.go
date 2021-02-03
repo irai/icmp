@@ -77,8 +77,10 @@ func processPacket(ether packet.RawEthPacket) error {
 
 	ip6Frame := packet.IP6(ether.Payload())
 	if !ip6Frame.IsValid() {
-		return fmt.Errorf("invalid icmp packet type: %x", ether.EtherType())
+		return fmt.Errorf("invalid ip6 packet type: %s", ether)
 	}
+	fmt.Println("ether: ", ether)
+	fmt.Println("ip   : ", ip6Frame)
 
 	// TODO: This will parse and create a struct; should optimise this to use references to buffer
 	msg, err := ParseMessage(ip6Frame.Payload())
@@ -107,9 +109,14 @@ func processPacket(ether packet.RawEthPacket) error {
 	case ipv6.ICMPTypeNeighborSolicitation:
 		fmt.Printf("icmp6 neighbor solicitation: %+v\n", msg)
 		// m = new(NeighborSolicitation)
+	case ipv6.ICMPTypeEchoReply:
+		fmt.Printf("icmp6 echo reply: %s \n", ip6Frame)
+
+	case ipv6.ICMPTypeEchoRequest:
+		fmt.Printf("icmp6 echo request %s \n", ip6Frame)
 
 	default:
-		log.Printf("icmp6 not implemented msg=%+v\n", msg)
+		log.Printf("icmp6 not implemented type=%v ip6=%s msg=%+v\n", msg.Type(), ip6Frame, msg)
 	}
 	return nil
 }

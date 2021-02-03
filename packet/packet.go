@@ -17,6 +17,8 @@ const (
 	// ICMP Packet types
 	ICMPTypeEchoReply   = 0
 	ICMPTypeEchoRequest = 8
+
+	IP6HeaderLen = 40 // IP6 header len
 )
 
 // RawEthPacket provide access to ethernet fields without copying the structure
@@ -102,16 +104,14 @@ func (p ICMP4) String() string {
 	return fmt.Sprintf("type %v code: %v", p.Type(), p.Code())
 }
 
-// see IP6 structure: https://github.com/golang/net/blob/master/ipv6/header.go
+// IP6 structure: see https://github.com/golang/net/blob/master/ipv6/header.go
 type IP6 []byte
 
 func (p IP6) IsValid() bool {
-	if len(p) >= 40 {
-		if p.PayloadLen()+40 != len(p) {
-			fmt.Println("waring payload differ ", len(p), p.PayloadLen()+40)
-		}
+	if len(p) >= IP6HeaderLen && p.PayloadLen()+IP6HeaderLen != len(p) {
 		return true
 	}
+	fmt.Println("warning payload differ ", len(p), p.PayloadLen()+IP6HeaderLen)
 	return false
 }
 
@@ -124,3 +124,6 @@ func (p IP6) HopLimit() int     { return int(p[7]) }                            
 func (p IP6) Src() net.IP       { return net.IP(p[8:24]) }                               // source address
 func (p IP6) Dst() net.IP       { return net.IP(p[24:40]) }                              // destination address
 func (p IP6) Payload() []byte   { return p[40:] }
+func (p IP6) String() string {
+	return fmt.Sprintf("version: %v src: %v dst: %v nextHeader: %v hoplimit:%v class: %v", p.Version(), p.Src(), p.Dst(), p.NextHeader(), p.HopLimit(), p.TrafficClass())
+}
