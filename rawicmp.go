@@ -210,19 +210,19 @@ func (h *Handler) ListenAndServe(ctxt context.Context) (err error) {
 		// Check EtherType
 		bpf.LoadAbsolute{Off: 12, Size: 2},
 		// 80221Q?
-		bpf.JumpIf{Cond: bpf.JumpNotEqual, Val: ETH_P_8021Q, SkipTrue: 1}, // EtherType is 2 pushed out by two bytes
+		bpf.JumpIf{Cond: bpf.JumpEqual, Val: ETH_P_8021Q, SkipFalse: 1}, // EtherType is 2 pushed out by two bytes
 		bpf.LoadAbsolute{Off: 14, Size: 2},
 		// IPv4 && ICMPv4?
-		bpf.JumpIf{Cond: bpf.JumpNotEqual, Val: ETH_P_IP, SkipTrue: 4},
-		bpf.LoadAbsolute{Off: 14 + 9, Size: 1},                  // IPv4 Protocol field - 14 Eth bytes + 9 IPv4 header
-		bpf.JumpIf{Cond: bpf.JumpNotEqual, Val: 1, SkipTrue: 1}, // ICMPv4 protocol - 1
-		bpf.RetConstant{Val: 1540},                              // matches ICMPv4, accept up to 1540 (1500 payload + ether header)
+		bpf.JumpIf{Cond: bpf.JumpEqual, Val: ETH_P_IP, SkipFalse: 4},
+		bpf.LoadAbsolute{Off: 14 + 9, Size: 1},                // IPv4 Protocol field - 14 Eth bytes + 9 IPv4 header
+		bpf.JumpIf{Cond: bpf.JumpEqual, Val: 1, SkipFalse: 1}, // ICMPv4 protocol - 1
+		bpf.RetConstant{Val: 1540},                            // matches ICMPv4, accept up to 1540 (1500 payload + ether header)
 		bpf.RetConstant{Val: 0},
 		// IPv6 && ICMPv6?
-		bpf.JumpIf{Cond: bpf.JumpNotEqual, Val: ETH_P_IP6, SkipTrue: 3},
-		bpf.LoadAbsolute{Off: 14 + 6, Size: 1},                   // IPv6 Protocol field - 14 Eth bytes + 6 IPv6 header
-		bpf.JumpIf{Cond: bpf.JumpNotEqual, Val: 58, SkipTrue: 1}, // ICMPv6 protocol - 58
-		bpf.RetConstant{Val: 1540},                               // matches ICMPv6, accept up to 1540 (1500 payload + ether header)
+		bpf.JumpIf{Cond: bpf.JumpEqual, Val: ETH_P_IP6, SkipFalse: 3},
+		bpf.LoadAbsolute{Off: 14 + 6, Size: 1},                 // IPv6 Protocol field - 14 Eth bytes + 6 IPv6 header
+		bpf.JumpIf{Cond: bpf.JumpEqual, Val: 58, SkipFalse: 1}, // ICMPv6 protocol - 58
+		bpf.RetConstant{Val: 1540},                             // matches ICMPv6, accept up to 1540 (1500 payload + ether header)
 		bpf.RetConstant{Val: 0},
 	})
 	if err != nil {
