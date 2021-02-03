@@ -225,6 +225,9 @@ func (h *Handler) ListenAndServe(ctxt context.Context) (err error) {
 		bpf.RetConstant{Val: 1540},                               // matches ICMPv6, accept up to 1540 (1500 payload + ether header)
 		bpf.RetConstant{Val: 0},
 	})
+	if err != nil {
+		log.Fatal("bpf assemble error", err)
+	}
 
 	h.conn, err = raw.ListenPacket(h.ifi, ETH_P_IP, &raw.Config{Filter: bpf})
 	if err != nil {
