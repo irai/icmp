@@ -77,7 +77,7 @@ func processPacket(ether packet.RawEthPacket) error {
 
 	ip6Frame := packet.IP6(ether.Payload())
 	if !ip6Frame.IsValid() {
-		return fmt.Errorf("invalid icmp packet type: %s", ether.EtherType())
+		return fmt.Errorf("invalid icmp packet type: %x", ether.EtherType())
 	}
 
 	// TODO: This will parse and create a struct; should optimise this to use references to buffer
@@ -120,10 +120,10 @@ func (h *Handler) ListenAndServe(ctxt context.Context) (err error) {
 		// Check EtherType
 		bpf.LoadAbsolute{Off: 12, Size: 2},
 		// 80221Q?
-		bpf.JumpIf{Cond: bpf.JumpEqual, Val: packet.ETH_P_8021Q, SkipFalse: 1}, // EtherType is 2 pushed out by two bytes
+		bpf.JumpIf{Cond: bpf.JumpEqual, Val: packet.EthType8021Q, SkipFalse: 1}, // EtherType is 2 pushed out by two bytes
 		bpf.LoadAbsolute{Off: 14, Size: 2},
 		// IPv6 && ICMPv6?
-		bpf.JumpIf{Cond: bpf.JumpEqual, Val: packet.ETH_P_IP6, SkipFalse: 3},
+		bpf.JumpIf{Cond: bpf.JumpEqual, Val: packet.EthTypeIP6, SkipFalse: 3},
 		bpf.LoadAbsolute{Off: 14 + 6, Size: 1},                 // IPv6 Protocol field - 14 Eth bytes + 6 IPv6 header
 		bpf.JumpIf{Cond: bpf.JumpEqual, Val: 58, SkipFalse: 1}, // ICMPv6 protocol - 58
 		bpf.RetConstant{Val: 1540},                             // matches ICMPv6, accept up to 1540 (1500 payload + ether header)
@@ -133,7 +133,7 @@ func (h *Handler) ListenAndServe(ctxt context.Context) (err error) {
 		log.Fatal("bpf assemble error", err)
 	}
 
-	h.conn, err = raw.ListenPacket(h.ifi, packet.ETH_P_IP6, &raw.Config{Filter: bpf})
+	h.conn, err = raw.ListenPacket(h.ifi, packet.EthTypeIP6, &raw.Config{Filter: bpf})
 	if err != nil {
 		h.conn = nil // on windows, not impleted returns a partially completed conn
 		return fmt.Errorf("raw.ListenPacket error: %w", err)
@@ -161,7 +161,7 @@ func (h *Handler) ListenAndServe(ctxt context.Context) (err error) {
 		}
 
 		ether := packet.RawEthPacket(buf[:n])
-		if ether.EtherType() != packet.ETH_P_IP6 || !ether.IsValid() {
+		if ether.EtherType() != packet.EthTypeIP6 || !ether.IsValid() {
 			log.Error("icmp invalid ethernet packet ", ether.EtherType())
 			continue
 		}

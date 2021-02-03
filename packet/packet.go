@@ -8,11 +8,11 @@ import (
 
 // Ethernet packet types - ETHER_TYPE
 const (
-	ETH_P_IP     = 0x800  // IPv4
-	ETH_P_IP6    = 0x86DD // IPv6
-	ETH_P_ARP    = 0x0806 // ARP
-	ETH_P_8021Q  = 0x8100 // VLAN 802.1Q
-	ETH_P_8021AD = 0x88a8 // VLAN 802.1ad
+	EthTypeIP4    = 0x800  // IPv4
+	EthTypeIP6    = 0x86DD // IPv6
+	EthTypeARP    = 0x0806 // ARP
+	EthType8021Q  = 0x8100 // VLAN 802.1Q
+	EthType8021AD = 0x88a8 // VLAN 802.1ad
 
 	// ICMP Packet types
 	ICMPTypeEchoReply   = 0
@@ -34,17 +34,18 @@ func (p RawEthPacket) IsValid() bool {
 func (p RawEthPacket) EtherType() uint16 { return binary.BigEndian.Uint16(p[12:14]) }
 func (p RawEthPacket) Payload() []byte {
 
-	if p.EtherType() == ETH_P_IP {
+	if p.EtherType() == EthTypeIP4 || p.EtherType() == EthTypeIP6 {
 		return p[14:]
 	}
 	// The IEEE 802.1Q tag, if present, then two EtherType contains the Tag Protocol Identifier (TPID) value of 0x8100
 	// and true EtherType/Length is located after the Q-tag.
 	// The TPID is followed by two octets containing the Tag Control Information (TCI) (the IEEE 802.1p priority (quality of service) and VLAN id).
 	// also handle 802.1ad - 0x88a8
-	if p.EtherType() == ETH_P_8021Q { // add 2 bytes to frame
+	if p.EtherType() == EthType8021Q { // add 2 bytes to frame
 		return p[16:]
 	}
-	if p.EtherType() == ETH_P_8021AD { // add 6 bytes to frame
+
+	if p.EtherType() == EthType8021AD { // add 6 bytes to frame
 		return p[20:]
 	}
 	return p[14:]
@@ -105,7 +106,10 @@ func (p ICMP4) String() string {
 type IP6 []byte
 
 func (p IP6) IsValid() bool {
-	if len(p) < 40 {
+	if len(p) >= 40 {
+		if p.PayloadLen()+40 != len(p) {
+			fmt.Println("waring payload differ ", len(p), p.PayloadLen()+40)
+		}
 		return true
 	}
 	return false

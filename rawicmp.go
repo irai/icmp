@@ -114,16 +114,16 @@ func (h *Handler) ListenAndServe(ctxt context.Context) (err error) {
 		// Check EtherType
 		bpf.LoadAbsolute{Off: 12, Size: 2},
 		// 80221Q?
-		bpf.JumpIf{Cond: bpf.JumpEqual, Val: packet.ETH_P_8021Q, SkipFalse: 1}, // EtherType is 2 pushed out by two bytes
+		bpf.JumpIf{Cond: bpf.JumpEqual, Val: packet.EthType8021Q, SkipFalse: 1}, // EtherType is 2 pushed out by two bytes
 		bpf.LoadAbsolute{Off: 14, Size: 2},
 		// IPv4 && ICMPv4?
-		bpf.JumpIf{Cond: bpf.JumpEqual, Val: packet.ETH_P_IP, SkipFalse: 4},
+		bpf.JumpIf{Cond: bpf.JumpEqual, Val: packet.EthTypeIP4, SkipFalse: 4},
 		bpf.LoadAbsolute{Off: 14 + 9, Size: 1},                // IPv4 Protocol field - 14 Eth bytes + 9 IPv4 header
 		bpf.JumpIf{Cond: bpf.JumpEqual, Val: 1, SkipFalse: 1}, // ICMPv4 protocol - 1
 		bpf.RetConstant{Val: 1540},                            // matches ICMPv4, accept up to 1540 (1500 payload + ether header)
 		bpf.RetConstant{Val: 0},
 		// IPv6 && ICMPv6?
-		bpf.JumpIf{Cond: bpf.JumpEqual, Val: packet.ETH_P_IP6, SkipFalse: 3},
+		bpf.JumpIf{Cond: bpf.JumpEqual, Val: packet.EthTypeIP6, SkipFalse: 3},
 		bpf.LoadAbsolute{Off: 14 + 6, Size: 1},                 // IPv6 Protocol field - 14 Eth bytes + 6 IPv6 header
 		bpf.JumpIf{Cond: bpf.JumpEqual, Val: 58, SkipFalse: 1}, // ICMPv6 protocol - 58
 		bpf.RetConstant{Val: 1540},                             // matches ICMPv6, accept up to 1540 (1500 payload + ether header)
@@ -133,7 +133,7 @@ func (h *Handler) ListenAndServe(ctxt context.Context) (err error) {
 		log.Fatal("bpf assemble error", err)
 	}
 
-	h.conn, err = raw.ListenPacket(h.ifi, packet.ETH_P_IP, &raw.Config{Filter: bpf})
+	h.conn, err = raw.ListenPacket(h.ifi, packet.EthTypeIP4, &raw.Config{Filter: bpf})
 	if err != nil {
 		h.conn = nil // on windows, not impleted returns a partially completed conn
 		return fmt.Errorf("raw.ListenPacket error: %w", err)
@@ -162,7 +162,7 @@ func (h *Handler) ListenAndServe(ctxt context.Context) (err error) {
 		}
 
 		ether := packet.RawEthPacket(buf[:n])
-		if ether.EtherType() != packet.ETH_P_IP || !ether.IsValid() {
+		if ether.EtherType() != packet.EthTypeIP4 || !ether.IsValid() {
 			log.Error("icmp invalid ethernet packet ", ether.EtherType())
 			continue
 		}
