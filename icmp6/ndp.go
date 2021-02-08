@@ -8,30 +8,32 @@ import (
 	"github.com/mdlayher/ndp"
 )
 
+/**
 func (s *Handler) SetPrefixes(prefixes []net.IPNet) error {
 	s.mutex.Lock()
 	s.prefixes = prefixes
 	s.mutex.Unlock()
 	return s.RouterAdvertisement(nil)
 }
+***/
 
-func (s *Handler) RouterAdvertisement(addr net.Addr) error {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	if s.prefixes == nil {
-		return nil // nothing to do
+func (h *Handler) RouterAdvertisement(router Router, addr *net.IPAddr) error {
+	h.mutex.Lock()
+	defer h.mutex.Unlock()
+	if len(router.Prefixes) == 0 {
+		return nil
 	}
 	if addr == nil {
 		addr = &net.IPAddr{
 			IP:   net.IPv6linklocalallnodes,
-			Zone: s.ifi.Name,
+			Zone: h.ifi.Name,
 		}
 	}
 
 	var options []ndp.Option
 
-	if len(s.prefixes) > 0 {
-		addrs, err := s.ifi.Addrs()
+	if len(router.Prefixes) > 0 {
+		addrs, err := h.ifi.Addrs()
 		if err != nil {
 			return err
 		}
@@ -54,20 +56,14 @@ func (s *Handler) RouterAdvertisement(addr net.Addr) error {
 		}
 	}
 
-	for _, prefix := range s.prefixes {
-		ones, _ := prefix.Mask.Size()
-		// Use the first /64 subnet within larger prefixes
-		if ones < 64 {
-			ones = 64
-		}
-
+	for _, prefix := range router.Prefixes {
 		options = append(options, &ndp.PrefixInformation{
-			PrefixLength:                   uint8(ones),
+			PrefixLength:                   uint8(prefix.PrefixLength),
 			OnLink:                         true,
 			AutonomousAddressConfiguration: true,
 			ValidLifetime:                  2 * time.Hour,
 			PreferredLifetime:              30 * time.Minute,
-			Prefix:                         prefix.IP,
+			Prefix:                         prefix.Prefix,
 		})
 	}
 
@@ -78,10 +74,10 @@ func (s *Handler) RouterAdvertisement(addr net.Addr) error {
 			// TODO: single source of truth for search domain name
 			DomainNames: []string{"lan"},
 		},
-		ndp.NewMTU(uint32(s.ifi.MTU)),
+		ndp.NewMTU(uint32(h.ifi.MTU)),
 		&ndp.LinkLayerAddress{
 			Direction: ndp.Source,
-			Addr:      s.ifi.HardwareAddr,
+			Addr:      h.ifi.HardwareAddr,
 		},
 	)
 
@@ -96,7 +92,7 @@ func (s *Handler) RouterAdvertisement(addr net.Addr) error {
 		return err
 	}
 	log.Printf("sending to %s", addr)
-	if _, err := s.pc.WriteTo(mb, nil, addr); err != nil {
+	if _, err := h.pc.WriteTo(mb, nil, addr); err != nil {
 		return err
 	}
 	return nil

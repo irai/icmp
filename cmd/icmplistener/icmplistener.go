@@ -97,7 +97,7 @@ func main() {
 func cmd(h *icmp.Handler, h6 *icmp6.Handler, srcIP net.IP, dstIP net.IP) {
 	reader := bufio.NewReader(os.Stdin)
 	for {
-		fmt.Println("Command: (q)uit            | (p)ing | (l)list | (g) loG <level>")
+		fmt.Println("Command: (q)uit            | (p)ing ip | (l)list | (g) loG <level>")
 		fmt.Println("    ndp: (ra) ip6          | ")
 		fmt.Print("Enter command: ")
 		text, _ := reader.ReadString('\n')
@@ -116,6 +116,8 @@ func cmd(h *icmp.Handler, h6 *icmp6.Handler, srcIP net.IP, dstIP net.IP) {
 		switch tokens[0] {
 		case "q":
 			return
+		case "l":
+			h6.PrintTable()
 		case "g":
 			if icmp.LogAll {
 				fmt.Printf("Debugging is OFF\n")
@@ -125,35 +127,42 @@ func cmd(h *icmp.Handler, h6 *icmp6.Handler, srcIP net.IP, dstIP net.IP) {
 				icmp.LogAll = true
 			}
 		case "p":
-			now := time.Now()
-			if err := h.Ping(srcIP, dstIP, time.Second*4); err != nil {
-				log.Error("ping error ", err)
+			if len(tokens) < 2 {
+				fmt.Println("missing ip")
 				continue
 			}
-			fmt.Printf("ping %v time=%v\n", dstIP, time.Now().Sub(now))
+			ip := net.ParseIP(tokens[1])
+			if ip == nil || ip.IsUnspecified() {
+				fmt.Println("invalid ip=", ip)
+				continue
+			}
+			now := time.Now()
+			if ip.To4() != nil {
+				if err := h.Ping(srcIP, dstIP, time.Second*4); err != nil {
+					fmt.Println("ping error ", err)
+					continue
+				}
+				fmt.Printf("ping %v time=%v\n", dstIP, time.Now().Sub(now))
+			}
+			if ip.To16() != nil && ip.To4() == nil {
+				if err := h6.SendEcho(nil, ip, 1, 101); err != nil {
+					fmt.Println("icmp6 echo error ", err)
+					continue
+				}
+				fmt.Printf("ping %v time=%v\n", dstIP, time.Now().Sub(now))
+			}
 		case "ra":
 			if len(tokens) < 2 {
 				fmt.Println("missing address")
 				continue
 			}
+			/**
 			ip := net.ParseIP(tokens[1])
 			if err := h6.RouterAdvertisement(&net.IPAddr{IP: ip}); err != nil {
 				log.Printf("error sending ra: %v", err)
 				continue
 			}
+			**/
 		}
 	}
-}
-
-func setLogLevel(level string) (err error) {
-
-	if level != "" {
-		l, err := log.ParseLevel(level)
-		if err != nil {
-			return err
-		}
-		log.SetLevel(l)
-	}
-
-	return nil
 }

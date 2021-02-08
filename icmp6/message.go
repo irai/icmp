@@ -25,13 +25,6 @@ const (
 	rsLen = 4
 )
 
-type icmp6Msg []byte
-
-func (m icmp6Msg) Type() uint8   { return m[0] }
-func (m icmp6Msg) Code() uint8   { return m[1] }
-func (m icmp6Msg) Checksum() int { return int(binary.BigEndian.Uint16(m[2:4])) }
-func (m icmp6Msg) Body() []byte  { return m[4:] }
-
 // A Message is a Neighbor Discovery Protocol message.
 type Message interface {
 	// Type specifies the ICMPv6 type for a Message.
