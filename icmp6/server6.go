@@ -102,12 +102,11 @@ func (h *Handler) processPacket(ether packet.Ether) error {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
 
-	var m Message
 	t := ipv6.ICMPType(ip6Frame.Payload()[0])
 	switch t {
 	case ipv6.ICMPTypeNeighborAdvertisement:
 		msg := new(NeighborAdvertisement)
-		if err := m.unmarshal(ip6Frame.Payload()[icmpLen:]); err != nil {
+		if err := msg.unmarshal(ip6Frame.Payload()[icmpLen:]); err != nil {
 			return fmt.Errorf("ndp: failed to unmarshal %s: %w", t, errParseMessage)
 		}
 		fmt.Printf("icmp6 neighbor advertisement: %+v\n", msg)
@@ -120,7 +119,7 @@ func (h *Handler) processPacket(ether packet.Ether) error {
 
 	case ipv6.ICMPTypeNeighborSolicitation:
 		msg := new(NeighborSolicitation)
-		if err := m.unmarshal(ip6Frame.Payload()[icmpLen:]); err != nil {
+		if err := msg.unmarshal(ip6Frame.Payload()[icmpLen:]); err != nil {
 			return fmt.Errorf("ndp: failed to unmarshal %s: %w", t, errParseMessage)
 		}
 		fmt.Printf("icmp6 neighbor solicitation: %+v\n", msg)
@@ -133,7 +132,7 @@ func (h *Handler) processPacket(ether packet.Ether) error {
 
 	case ipv6.ICMPTypeRouterAdvertisement:
 		msg := new(RouterAdvertisement)
-		if err := m.unmarshal(ip6Frame.Payload()[icmpLen:]); err != nil {
+		if err := msg.unmarshal(ip6Frame.Payload()[icmpLen:]); err != nil {
 			return fmt.Errorf("ndp: failed to unmarshal %s: %w", t, errParseMessage)
 		}
 		fmt.Printf("icmp6 router advertisement : %+v\n", msg)
@@ -179,7 +178,7 @@ func (h *Handler) processPacket(ether packet.Ether) error {
 		}
 	case ipv6.ICMPTypeRouterSolicitation:
 		msg := new(RouterSolicitation)
-		if err := m.unmarshal(ip6Frame.Payload()[icmpLen:]); err != nil {
+		if err := msg.unmarshal(ip6Frame.Payload()[icmpLen:]); err != nil {
 			return fmt.Errorf("ndp: failed to unmarshal %s: %w", t, errParseMessage)
 		}
 		fmt.Printf("icmp6 router solicitation: %+v\n", msg)
