@@ -91,8 +91,8 @@ func (h *Handler) Ping(src net.IP, dst net.IP, timeout time.Duration) (err error
 func sendICMP6Packet(ifi *net.Interface, src net.IP, dst net.IP, p []byte) error {
 
 	// TODO: reuse h.conn and write directly to socket
-	// c, err := icmp.ListenPacket("ip6:ipv6-icmp", ipAddr.String())
-	c, err := net.DialIP("ip6:1", nil, nil) // ICMP for IPv6
+	c, err := icmp.ListenPacket("ip6:ipv6-icmp", "::")
+	// c, err := net.DialIP("ip6:1", nil, nil) // ICMP for IPv6
 	if err != nil {
 		log.Error("icmp error in listen packet: ", err)
 		return err

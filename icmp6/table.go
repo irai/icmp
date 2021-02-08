@@ -59,7 +59,7 @@ func (h *Handler) PrintTable() {
 			if v.OtherCondigFlag {
 				flags = flags + "O"
 			}
-			fmt.Printf("mac=%s ip=%v flags=%s prefixes=%v rdnss=%s options=%v\n", v.MAC, v.IP, flags, v.Prefixes, v.RDNSS, v.Options)
+			fmt.Printf("mac=%s ip=%v flags=%s prefixes=%v rdnss=%+v options=%+v\n", v.MAC, v.IP, flags, v.Prefixes, v.RDNSS, v.Options)
 		}
 	}
 }
