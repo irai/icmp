@@ -5,6 +5,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/irai/icmp/packet"
 	"github.com/mdlayher/netx/rfc4193"
 
 	"golang.org/x/net/ipv6"
@@ -68,7 +69,7 @@ func (h *Handler) findOrCreateHost(mac net.HardwareAddr, ip net.IP) (host *Host,
 	if host, ok := h.LANHosts[string(mac)]; ok {
 		return host, true
 	}
-	host = &Host{MAC: mac, IP: ip}
+	host = &Host{MAC: packet.CopyMAC(mac), IP: packet.CopyIP(ip)}
 	h.LANHosts[string(host.MAC)] = host
 	return host, false
 }

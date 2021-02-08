@@ -102,6 +102,8 @@ func (h *Handler) processPacket(ether packet.Ether) error {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
 
+	var found bool
+	var host *Host
 	t := ipv6.ICMPType(ip6Frame.Payload()[0])
 	switch t {
 	case ipv6.ICMPTypeNeighborAdvertisement:
@@ -110,12 +112,9 @@ func (h *Handler) processPacket(ether packet.Ether) error {
 			return fmt.Errorf("ndp: failed to unmarshal %s: %w", t, errParseMessage)
 		}
 		fmt.Printf("icmp6 neighbor advertisement: %+v\n", msg)
-		host, found := h.findOrCreateHost(ether.Src(), msg.TargetAddress)
+		host, found = h.findOrCreateHost(ether.Src(), msg.TargetAddress)
 		host.LastSeen = time.Now()
 		host.Online = true
-		if !found && h.notification != nil {
-			go func() { h.notification <- Event{Type: t, Host: *host} }()
-		}
 
 	case ipv6.ICMPTypeNeighborSolicitation:
 		msg := new(NeighborSolicitation)
@@ -123,12 +122,9 @@ func (h *Handler) processPacket(ether packet.Ether) error {
 			return fmt.Errorf("ndp: failed to unmarshal %s: %w", t, errParseMessage)
 		}
 		fmt.Printf("icmp6 neighbor solicitation: %+v\n", msg)
-		host, found := h.findOrCreateHost(ether.Src(), msg.TargetAddress)
+		host, found = h.findOrCreateHost(ether.Src(), msg.TargetAddress)
 		host.LastSeen = time.Now()
 		host.Online = true
-		if !found && h.notification != nil {
-			go func() { h.notification <- Event{Type: t, Host: *host} }()
-		}
 
 	case ipv6.ICMPTypeRouterAdvertisement:
 		msg := new(RouterAdvertisement)
@@ -136,7 +132,7 @@ func (h *Handler) processPacket(ether packet.Ether) error {
 			return fmt.Errorf("ndp: failed to unmarshal %s: %w", t, errParseMessage)
 		}
 		fmt.Printf("icmp6 router advertisement : %+v\n", msg)
-		host, found := h.findOrCreateHost(ether.Src(), ip6Frame.Src())
+		host, found = h.findOrCreateHost(ether.Src(), ip6Frame.Src())
 		host.Router = true
 		router, _ := h.findOrCreateRouter(ether.Src())
 		router.ManagedFlag = msg.ManagedConfiguration
@@ -173,28 +169,34 @@ func (h *Handler) processPacket(ether packet.Ether) error {
 			h.autoConfigureRouter(*router)
 		}
 
-		if !found && h.notification != nil {
-			go func() { h.notification <- Event{Type: t, Host: *host} }()
-		}
 	case ipv6.ICMPTypeRouterSolicitation:
 		msg := new(RouterSolicitation)
 		if err := msg.unmarshal(ip6Frame.Payload()[icmpLen:]); err != nil {
 			return fmt.Errorf("ndp: failed to unmarshal %s: %w", t, errParseMessage)
 		}
 		fmt.Printf("icmp6 router solicitation: %+v\n", msg)
-		host, found := h.findOrCreateHost(ether.Src(), ip6Frame.Src())
+		host, found = h.findOrCreateHost(ether.Src(), ip6Frame.Src())
 		host.LastSeen = time.Now()
 		host.Online = true
-		if !found && h.notification != nil {
-			go func() { h.notification <- Event{Type: t, Host: *host} }()
-		}
 	case ipv6.ICMPTypeEchoReply:
 		fmt.Printf("icmp6 echo reply: %s \n", ip6Frame)
+		msg := packet.ICMPEcho(ip6Frame.Payload())
+		if !msg.IsValid() {
+			return fmt.Errorf("invalid icmp echo msg len=%d", len(ip6Frame.Payload()))
+		}
+		fmt.Printf("icmp6 echo msg: %s\n", msg)
+		host, found = h.findOrCreateHost(ether.Src(), ip6Frame.Src())
+		host.LastSeen = time.Now()
+		host.Online = true
 	case ipv6.ICMPTypeEchoRequest:
 		fmt.Printf("icmp6 echo request %s \n", ip6Frame)
 	default:
 		log.Printf("icmp6 not implemented type=%v ip6=%s\n", t, ip6Frame)
 		return fmt.Errorf("ndp: unrecognized ICMPv6 type %d: %w", t, errParseMessage)
+	}
+
+	if !found && h.notification != nil {
+		go func() { h.notification <- Event{Type: t, Host: *host} }()
 	}
 
 	return nil

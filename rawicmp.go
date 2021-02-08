@@ -25,7 +25,7 @@ type Handler struct {
 	conn6 net.PacketConn
 }
 
-func (h *Handler) sendRawICMP(src net.IP, dst net.IP, p packet.ICMP4) error {
+func (h *Handler) sendRawICMP(src net.IP, dst net.IP, p packet.ICMP) error {
 
 	// TODO: reuse h.conn and write directly to socket
 	c, err := net.ListenPacket("ip4:1", "0.0.0.0") // ICMP for IPv4
@@ -179,7 +179,7 @@ func (h *Handler) ListenAndServe(ctxt context.Context) (err error) {
 			continue
 		}
 
-		icmpFrame := packet.ICMP4(ipFrame.Payload())
+		icmpFrame := packet.ICMP(ipFrame.Payload())
 
 		switch icmpFrame.Type() {
 		case packet.ICMPTypeEchoReply:
@@ -202,7 +202,8 @@ func (h *Handler) ListenAndServe(ctxt context.Context) (err error) {
 			}
 
 			icmpTable.cond.L.Lock()
-			entry, ok := icmpTable.table[icmpFrame.EchoID()]
+			echo := packet.ICMPEcho(icmpFrame)
+			entry, ok := icmpTable.table[echo.EchoID()]
 			if ok {
 				entry.msgRecv = icmpMsg
 				// log.Info("wakingup", icmpFrame.EchoID)

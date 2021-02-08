@@ -21,6 +21,18 @@ const (
 	IP6HeaderLen = 40 // IP6 header len
 )
 
+func CopyIP(srcIP net.IP) net.IP {
+	ip := make(net.IP, len(srcIP))
+	copy(ip, srcIP)
+	return ip.To4()
+}
+
+func CopyMAC(srcMAC net.HardwareAddr) net.HardwareAddr {
+	mac := make(net.HardwareAddr, len(srcMAC))
+	copy(mac, srcMAC)
+	return mac
+}
+
 // Ether provide access to ethernet fields without copying the structure
 // see: https://medium.com/@mdlayher/network-protocol-breakdown-ethernet-and-go-de985d726cc1
 type Ether []byte
@@ -88,17 +100,29 @@ func (p IP4) String() string {
 	return fmt.Sprintf("version=%v src=%v dst=%v proto=%v ttl=%v tos=%v", p.Version(), p.Src(), p.Dst(), p.Protocol(), p.TTL(), p.TOS())
 }
 
-type ICMP4 []byte
+type ICMP []byte
 
-func (p ICMP4) Type() uint8          { return uint8(p[0]) }
-func (p ICMP4) Code() int            { return int(p[1]) }
-func (p ICMP4) Checksum() int        { return int(binary.BigEndian.Uint16(p[2:4])) }
-func (p ICMP4) RestOfHeader() []byte { return p[4:8] }
-func (p ICMP4) EchoID() uint16       { return binary.BigEndian.Uint16(p[4:6]) }
-func (p ICMP4) EchoSeq() uint16      { return binary.BigEndian.Uint16(p[6:8]) }
-func (p ICMP4) EchoData() string     { return string(p[8:]) }
-func (p ICMP4) Payload() []byte      { return p[8:] }
-func (p ICMP4) String() string {
+func (p ICMP) Type() uint8          { return uint8(p[0]) }
+func (p ICMP) Code() int            { return int(p[1]) }
+func (p ICMP) Checksum() int        { return int(binary.BigEndian.Uint16(p[2:4])) }
+func (p ICMP) RestOfHeader() []byte { return p[4:8] }
+func (p ICMP) Payload() []byte      { return p[8:] }
+
+type ICMPEcho []byte
+
+func (p ICMPEcho) IsValid() bool   { return len(p) >= 8 }
+func (p ICMPEcho) Type() uint8     { return uint8(p[0]) }
+func (p ICMPEcho) Code() int       { return int(p[1]) }
+func (p ICMPEcho) Checksum() int   { return int(binary.BigEndian.Uint16(p[2:4])) }
+func (p ICMPEcho) EchoID() uint16  { return binary.BigEndian.Uint16(p[4:6]) }
+func (p ICMPEcho) EchoSeq() uint16 { return binary.BigEndian.Uint16(p[6:8]) }
+func (p ICMPEcho) EchoData() string {
+	if len(p) > 8 {
+		return string(p[8:])
+	}
+	return ""
+}
+func (p ICMPEcho) String() string {
 
 	switch p.Type() {
 	case ICMPTypeEchoReply:
