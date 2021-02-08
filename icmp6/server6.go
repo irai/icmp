@@ -48,7 +48,7 @@ func New(nic string) (*Handler, error) {
 func (config Config) New(nic string) (*Handler, error) {
 	var err error
 
-	h := &Handler{Config: config}
+	h := &Handler{Config: config, LANRouters: make(map[string]*Router), LANHosts: make(map[string]*Host)}
 	h.ifi, err = net.InterfaceByName(nic)
 	if err != nil {
 		return nil, fmt.Errorf("interface not found nic=%s: %w", nic, err)
