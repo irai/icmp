@@ -84,6 +84,8 @@ func (h *Handler) autoConfigureRouter(router Router) {
 	}
 }
 
+var repeat int
+
 func (h *Handler) processPacket(ether packet.Ether) error {
 
 	ip6Frame := packet.IP6(ether.Payload())
@@ -102,7 +104,6 @@ func (h *Handler) processPacket(ether packet.Ether) error {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
 
-	var repeat int
 	var found bool
 	var host *Host
 	t := ipv6.ICMPType(ip6Frame.Payload()[0])
@@ -132,11 +133,12 @@ func (h *Handler) processPacket(ether packet.Ether) error {
 		if err := msg.unmarshal(ip6Frame.Payload()[icmpLen:]); err != nil {
 			return fmt.Errorf("ndp: failed to unmarshal %s: %w", t, errParseMessage)
 		}
-		if repeat%16 == 0 {
+		if repeat%16 != 0 {
 			fmt.Printf("icmp6 repeated router advertisement : \n")
 			repeat++
 			break
 		}
+		repeat++
 		fmt.Printf("icmp6 router advertisement : %+v\n", msg)
 		host, found = h.findOrCreateHost(ether.Src(), ip6Frame.Src())
 		host.Router = true
