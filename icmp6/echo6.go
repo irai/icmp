@@ -116,8 +116,13 @@ func sendICMP6Packet(ifi *net.Interface, src net.IP, dst net.IP, p []byte) error
 		return err
 	}
 
+	hopLimit := 64
+	if dst.IsLinkLocalUnicast() || dst.IsLinkLocalMulticast() {
+		hopLimit = 1
+	}
+
 	cm := &ipv6.ControlMessage{
-		HopLimit: 255,
+		HopLimit: hopLimit,
 		Src:      src,
 		IfIndex:  ifi.Index,
 	}
