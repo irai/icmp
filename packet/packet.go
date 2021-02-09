@@ -24,7 +24,7 @@ const (
 func CopyIP(srcIP net.IP) net.IP {
 	ip := make(net.IP, len(srcIP))
 	copy(ip, srcIP)
-	return ip.To4()
+	return ip
 }
 
 func CopyMAC(srcMAC net.HardwareAddr) net.HardwareAddr {
