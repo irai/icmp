@@ -142,7 +142,7 @@ func (h *Handler) processPacket(ether packet.Ether) error {
 		fmt.Printf("icmp6 router advertisement : %+v\n", msg)
 		host, found = h.findOrCreateHost(ether.Src(), ip6Frame.Src())
 		host.Router = true
-		router, _ := h.findOrCreateRouter(ether.Src())
+		router, _ := h.findOrCreateRouter(ether.Src(), ip6Frame.Src())
 		router.ManagedFlag = msg.ManagedConfiguration
 		router.CurHopLimit = msg.CurrentHopLimit
 		router.DefaultLifetime = msg.RouterLifetime

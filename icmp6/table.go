@@ -74,11 +74,11 @@ func (h *Handler) findOrCreateHost(mac net.HardwareAddr, ip net.IP) (host *Host,
 	return host, false
 }
 
-func (h *Handler) findOrCreateRouter(mac net.HardwareAddr) (router *Router, found bool) {
+func (h *Handler) findOrCreateRouter(mac net.HardwareAddr, ip net.IP) (router *Router, found bool) {
 	if router, ok := h.LANRouters[string(mac)]; ok {
 		return router, true
 	}
-	router = &Router{MAC: mac}
+	router = &Router{MAC: packet.CopyMAC(mac), IP: packet.CopyIP(ip)}
 	h.LANRouters[string(router.MAC)] = router
 	return router, false
 }

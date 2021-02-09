@@ -37,7 +37,7 @@ func init() {
 	icmpTable.cond = sync.NewCond(&icmpTable.mutex)
 }
 
-// SendICMPEcho6 transmit an icmp echo request
+// SendEcho transmit an icmp echo request
 // Do not wait for response
 func (h *Handler) SendEcho(src net.IP, dst net.IP, id uint16, seq uint16) error {
 
