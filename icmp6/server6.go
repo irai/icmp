@@ -102,6 +102,7 @@ func (h *Handler) processPacket(ether packet.Ether) error {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
 
+	var repeat int
 	var found bool
 	var host *Host
 	t := ipv6.ICMPType(ip6Frame.Payload()[0])
@@ -131,6 +132,11 @@ func (h *Handler) processPacket(ether packet.Ether) error {
 		if err := msg.unmarshal(ip6Frame.Payload()[icmpLen:]); err != nil {
 			return fmt.Errorf("ndp: failed to unmarshal %s: %w", t, errParseMessage)
 		}
+		if repeat%16 == 0 {
+			fmt.Printf("icmp6 repeated router advertisement : \n")
+			repeat++
+			break
+		}
 		fmt.Printf("icmp6 router advertisement : %+v\n", msg)
 		host, found = h.findOrCreateHost(ether.Src(), ip6Frame.Src())
 		host.Router = true
@@ -139,28 +145,32 @@ func (h *Handler) processPacket(ether packet.Ether) error {
 		router.CurHopLimit = msg.CurrentHopLimit
 		router.DefaultLifetime = msg.RouterLifetime
 		router.Options = msg.Options
-		fmt.Printf("icmp6 router advertisement options : %+v\n", msg.Options)
 
 		prefixes := []PrefixInformation{}
 		for _, v := range msg.Options {
 			switch v.Code() {
 			case optMTU:
-				router.MTU = uint32(*(v.(*MTU)))
+				o := v.(*MTU)
+				fmt.Println(" options mtu ", v.Code(), o)
+				router.MTU = uint32(*o)
 			case optPrefixInformation:
 				o := v.(*PrefixInformation)
+				fmt.Println(" options prefix ", v.Code(), o)
 				prefixes = append(prefixes, *o)
 			case optRDNSS:
 				o := v.(*RecursiveDNSServer)
+				fmt.Println(" options RDNSS ", v.Code(), o)
 				router.RDNSS = o
 			case optSourceLLA:
 				o := v.(*LinkLayerAddress)
+				fmt.Println(" options LLA ", v.Code(), o)
 				if !bytes.Equal(o.Addr, ether.Src()) {
 					log.Printf("error: icmp6 unexpected sourceLLA=%s etherFrame=%s", o.Addr, ether.Src())
 				}
 			}
 		}
 
-		if len(prefixes) >= 1 {
+		if len(prefixes) > 0 {
 			router.Prefixes = prefixes
 			if len(prefixes) > 1 {
 				fmt.Printf("error: icmp6 invalid prefix list len=%d list=%v", len(prefixes), prefixes)
@@ -176,8 +186,6 @@ func (h *Handler) processPacket(ether packet.Ether) error {
 		}
 		fmt.Printf("icmp6 router solicitation: %+v\n", msg)
 		host, found = h.findOrCreateHost(ether.Src(), ip6Frame.Src())
-		host.LastSeen = time.Now()
-		host.Online = true
 	case ipv6.ICMPTypeEchoReply:
 		fmt.Printf("icmp6 echo reply: %s \n", ip6Frame)
 		msg := packet.ICMPEcho(ip6Frame.Payload())
@@ -186,8 +194,6 @@ func (h *Handler) processPacket(ether packet.Ether) error {
 		}
 		fmt.Printf("icmp6 echo msg: %s\n", msg)
 		host, found = h.findOrCreateHost(ether.Src(), ip6Frame.Src())
-		host.LastSeen = time.Now()
-		host.Online = true
 	case ipv6.ICMPTypeEchoRequest:
 		fmt.Printf("icmp6 echo request %s \n", ip6Frame)
 	default:
@@ -195,6 +201,10 @@ func (h *Handler) processPacket(ether packet.Ether) error {
 		return fmt.Errorf("ndp: unrecognized ICMPv6 type %d: %w", t, errParseMessage)
 	}
 
+	if host != nil {
+		host.LastSeen = time.Now()
+		host.Online = true
+	}
 	if !found && h.notification != nil {
 		go func() { h.notification <- Event{Type: t, Host: *host} }()
 	}
